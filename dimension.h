@@ -1,0 +1,95 @@
+/*
+	Dimension
+	(c) LifesMinder
+*/
+
+#ifndef DIMENSION_H
+#define DIMENSION_H
+
+#include "targetver.h"
+#define WIN32_LEAN_AND_MEAN // Exclude rarely-used stuff from Windows headers
+// Windows Header Files
+#include <windows.h>
+#include <commdlg.h>
+#include <objidl.h>
+#include <gdiplus.h>
+#include <strsafe.h>
+#include <CommCtrl.h>
+#include <versionhelpers.h>
+#include <dwmapi.h>
+#include <uxtheme.h>
+#include <vsstyle.h>
+#pragma comment(lib, "Dwmapi.lib")
+#pragma comment(lib, "uxtheme.lib")
+#pragma comment(lib, "Gdiplus.lib")
+// C RunTime Header Files
+#include <stdio.h>
+#include <stdlib.h>
+#include <malloc.h>
+#include <memory.h>
+#include <tchar.h>
+// C++ RunTime Header Files
+#include <iostream>
+#include <vector>
+#include <string>
+#include <sstream>
+#include <fstream>
+#include <map>
+#include <any>
+// Dimension Header Files
+#include "dimengine.h"
+#include "theme.h"
+#pragma once
+#include "Resource.h"
+
+#ifndef MAX_LOADSTRING
+	#define MAX_LOADSTRING 256
+#endif
+
+using namespace std;
+using namespace Gdiplus;
+
+// Functionality
+bool DimCoreIsDark();
+void MakeMenuOwnerDraw(HMENU hMenu);
+static bool GetMenuBarRect(HWND hwnd, RECT& rc);
+void PaintMenuBar(HWND hwnd);
+int UIRefresh(HWND hWnd, LPARAM lParam = NULL, WPARAM wParam = NULL, int code = 0);
+void DrawDarkMenuBar(HWND hwnd, HDC hdc);
+COLORREF ShowColorDialog(HWND hwnd);
+
+typedef struct _Cursor {
+    COLORREF color = RGB(0, 0, 0);
+    ShapeType tool = SHAPE_NONE;
+    POINT start = { 0, 0 }, now = { 0, 0 };
+    vector<POINT> points;
+
+    unsigned int size = 1;
+    bool drawing = false;
+} Cursor;
+
+// Shell Manifest
+#if defined _M_IX86
+#pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='x86' publicKeyToken='6595b64144ccf1df' language='*'\"")
+#elif defined _M_IA64
+#pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='ia64' publicKeyToken='6595b64144ccf1df' language='*'\"")
+#elif defined _M_X64
+#pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='amd64' publicKeyToken='6595b64144ccf1df' language='*'\"")
+#else
+#pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
+#endif
+#pragma endregion
+
+// UXTheme specifics
+enum PreferredAppMode {
+    Default,
+    AllowDark,
+    ForceDark,
+    ForceLight,
+    Max
+};
+using SetPreferredAppMode_t = PreferredAppMode(WINAPI*)(PreferredAppMode);
+typedef bool (WINAPI* AllowDarkModeForWindow_t)(HWND hwnd, BOOL allow);
+typedef void (WINAPI* FlushMenuThemes_t)();
+
+#endif
