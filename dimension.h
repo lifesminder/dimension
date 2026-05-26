@@ -10,12 +10,14 @@
 #define WIN32_LEAN_AND_MEAN // Exclude rarely-used stuff from Windows headers
 // Windows Header Files
 #include <windows.h>
+#include <CommCtrl.h>
 #include <commdlg.h>
 #include <objidl.h>
 #include <gdiplus.h>
 #include <strsafe.h>
-#include <CommCtrl.h>
 #include <versionhelpers.h>
+#include <Richedit.h>
+//// Windows 10 and later
 #include <dwmapi.h>
 #include <uxtheme.h>
 #include <vsstyle.h>

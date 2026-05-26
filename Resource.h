@@ -17,6 +17,7 @@
 #define IDC_EDITOR                      1000
 #define IDC_DIM_TITLE                   1001
 #define IDC_DIM_COPYRIGHT               1002
+#define IDC_RICHEDIT21                  1003
 #define ID_TOOLBOX_CURSOR               2000
 #define ID_TOOLBOX_RECTANGLE            2001
 #define ID_TOOLBOX_ELLIPSE              2002
@@ -39,7 +40,6 @@
 #define ID_TIMELINE_NEW                 32811
 #define ID_TIMELINE_DUPLICATE           32812
 #define ID_TIMELINE_DELETE              32813
-#define ID_ACCELERATOR32822             32822
 #define IDC_STATIC                      -1
 
 // Next default values for new objects
@@ -49,7 +49,7 @@
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        130
 #define _APS_NEXT_COMMAND_VALUE         32823
-#define _APS_NEXT_CONTROL_VALUE         1003
+#define _APS_NEXT_CONTROL_VALUE         1004
 #define _APS_NEXT_SYMED_VALUE           110
 #endif
 #endif

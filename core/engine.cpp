@@ -347,14 +347,31 @@ wstring Engine::Cast() {
 	wostringstream codeStream;
 
 	// Scene
-	codeStream << "scene {\r\n";
 	if (this->options.find(L"width") == this->options.end()) this->options[L"width"] = 800;
 	if (this->options.find(L"height") == this->options.end()) this->options[L"height"] = 600;
 
-	for (auto op = this->options.begin(); op != this->options.begin(); ++op) {
-		bool last = (next(op) == this->options.end());
-		wstring value = any_cast<wstring>(op->second);
-		codeStream << "\t" << op->first << "=" << value << "\r\n";
+	codeStream << "scene {\r\n";
+	for (auto op = this->options.begin(); op != this->options.end(); ++op) {
+		if (op->first == L"darkTheme" || op->first == L"frameLoop") continue;
+
+		auto next_op = next(op);
+		while (next_op != this->options.end() &&
+			(next_op->first == L"darkTheme" || next_op->first == L"frameLoop"))
+			++next_op;
+		bool last = (next_op == this->options.end());
+
+		codeStream << "\t" << op->first << "=";
+		try {
+			codeStream << any_cast<int>(op->second);
+		}
+		catch (...) {
+			try {
+				codeStream << any_cast<wstring>(op->second);
+			}
+			catch (...) {}
+		}
+		if (!last) codeStream << L",";
+		codeStream << "\r\n";
 	}
 	codeStream << "}\r\n";
 
@@ -390,7 +407,8 @@ wstring Engine::Cast() {
 							});
 
 							codeStream << it->first + L"=";
-							codeStream << value; // (!isNumber) ? L'\"' + value + L'\"' : value;
+							if (isNumber) codeStream << value;
+							else codeStream << L'"' << value << L'"';
 
 							if (!last)
 								codeStream << L", ";

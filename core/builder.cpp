@@ -61,20 +61,19 @@ Shape DimShape(wstring block) {
 			if (!value.empty() && (value.front() == L'"' || value.front() == L'\'')) {
 				wchar_t quote = value.front();
 				value = value.substr(1); // strip opening quote
-				if (value.empty() || value.back() != quote) {
+
+				// read until closing quote found, ignoring spaces and commas
+				while (!value.empty() && value.back() != quote) {
 					wstring part;
-					while (argStream >> part) {
-						value += L" " + part;
-						if (!part.empty() && part.back() == quote) break;
-					}
+					if (!(argStream >> part)) break;
+					// strip trailing comma before checking for quote
+					if (!part.empty() && part.back() == L',') part.pop_back();
+					value += L" " + part;
 				}
 
-				// strip closing quote and trailing comma
-				if (!value.empty() && value.back() == quote) value.pop_back();
-				else if (!value.empty() && value.back() == L',') {
+				// strip closing quote
+				if (!value.empty() && value.back() == quote)
 					value.pop_back();
-					if (!value.empty() && value.back() == quote) value.pop_back();
-				}
 			}
 
 			sh.options[key] = value;

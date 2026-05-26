@@ -22,33 +22,6 @@ LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK Editor(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM);
 
-auto FinishPath = [&]() {
-    cursor.drawing = false;
-    if (cursor.points.size() < 2) { cursor.points.clear(); return; }
-
-    RECT clientRect;
-    GetClientRect(hwnd, &clientRect);
-    unsigned int canvasW = engine.GetAs<int>(L"width", 800), canvasH = engine.GetAs<int>(L"height", 600);
-    int cx = (clientRect.right - canvasW) / 2, cy = (clientRect.bottom - canvasH) / 2;
-
-    Shape sh = { .id = -1, .type = SHAPE_PATH };
-    for (int i = 0; i < (int)cursor.points.size(); i++) {
-        sh.options[L"x" + to_wstring(i + 1)] = to_wstring(cursor.points[i].x - cx);
-        sh.options[L"y" + to_wstring(i + 1)] = to_wstring(cursor.points[i].y - cy);
-    }
-    sh.options[L"r"] = to_wstring(GetRValue(cursor.color));
-    sh.options[L"g"] = to_wstring(GetGValue(cursor.color));
-    sh.options[L"b"] = to_wstring(GetBValue(cursor.color));
-    sh.options[L"size"] = to_wstring(cursor.size);
-
-    if (engine.frames.empty()) engine.CreateFrame(Frame());
-    engine.CreateShape(sh);
-    currentCode = engine.Cast();
-    cursor.points.clear();
-    isSaved = false;
-    InvalidateRect(hwnd, NULL, FALSE);
-};
-
 int
 APIENTRY
 wWinMain(
@@ -104,9 +77,6 @@ wWinMain(
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
     UIRefresh(hwnd, 0, 0);
-    if (DimCoreIsDark()) {
-        HMENU hMenu = GetMenu(hwnd);
-    }
 
     HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_DIMENSION));
     MSG msg;
@@ -134,11 +104,42 @@ wWinMain(
 //
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
     LRESULT lr = 0;
+    auto FinishPath = [&]() {
+        cursor.drawing = false;
+        if (cursor.points.size() < 2) { cursor.points.clear(); return; }
+
+        RECT clientRect;
+        GetClientRect(hwnd, &clientRect);
+        unsigned int canvasW = engine.GetAs<int>(L"width", 800), canvasH = engine.GetAs<int>(L"height", 600);
+        int cx = (clientRect.right - canvasW) / 2, cy = (clientRect.bottom - canvasH) / 2;
+
+        Shape sh = { .id = -1, .type = SHAPE_PATH };
+        for (int i = 0; i < (int)cursor.points.size(); i++) {
+            sh.options[L"x" + to_wstring(i + 1)] = to_wstring(cursor.points[i].x - cx);
+            sh.options[L"y" + to_wstring(i + 1)] = to_wstring(cursor.points[i].y - cy);
+        }
+        sh.options[L"r"] = to_wstring(GetRValue(cursor.color));
+        sh.options[L"g"] = to_wstring(GetGValue(cursor.color));
+        sh.options[L"b"] = to_wstring(GetBValue(cursor.color));
+        sh.options[L"size"] = to_wstring(cursor.size);
+
+        if (engine.frames.empty()) engine.CreateFrame(Frame());
+        engine.CreateShape(sh);
+        currentCode = engine.Cast();
+        cursor.points.clear();
+        isSaved = false;
+        InvalidateRect(hwnd, NULL, FALSE);
+    };
+
     if (DimCoreIsDark() && UAHWndProc(hwnd, message, wParam, lParam, &lr)) {
         return lr;
     }
 
     switch (message) {
+        case WM_ACTIVATE: {
+            CheckMenuRadioItem(GetMenu(hWnd), ID_TOOLBOX_CURSOR, ID_TOOLBOX_PATH, ID_TOOLBOX_CURSOR, MF_BYCOMMAND);
+            break;
+        }
         case WM_SIZE: {
             SetWindowPos(hWnd, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
             UIRefresh(hWnd, lParam, wParam);
@@ -257,14 +258,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             GetClientRect(hWnd, &clientRect);
             int clientWidth = clientRect.right, clientHeight = clientRect.bottom;
             int canvasW = engine.GetAs<int>(L"width", 800), canvasH = engine.GetAs<int>(L"height", 600);
-            int canvasX = (clientWidth - canvasW) / 2, canvasY = (clientHeight - canvasH) / 2;
 
             // build shape — subtract canvas offset so coords are canvas-relative
             Shape sh = { .id = -1, .type = cursor.tool };
-
             int cx = (clientWidth - canvasW) / 2, cy = (clientHeight - canvasH) / 2;
-            int x1 = min(cursor.start.x, cursor.now.x) - cx, y1 = min(cursor.start.y, cursor.now.y) - cy;
-            int x2 = max(cursor.start.x, cursor.now.x) - cx, y2 = max(cursor.start.y, cursor.now.y) - cy;
 
             if (cursor.tool == SHAPE_LINE) {
                 // lines keep exact start/end points, no min/max normalization
@@ -312,21 +309,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             if (cursor.drawing && cursor.tool != SHAPE_NONE) {
                 RECT cr;
                 GetClientRect(hWnd, &cr);
-                int canvasW = engine.GetAs<int>(L"width", 800);
-                int canvasH = engine.GetAs<int>(L"height", 600);
-                int canvasX = (cr.right - canvasW) / 2;
-                int canvasY = (cr.bottom - canvasH) / 2;
 
                 // clamp to canvas bounds
-                int x1 = min(cursor.start.x, cursor.now.x);
-                int y1 = min(cursor.start.y, cursor.now.y);
-                int x2 = max(cursor.start.x, cursor.now.x);
-                int y2 = max(cursor.start.y, cursor.now.y);
+                int x1 = min(cursor.start.x, cursor.now.x), y1 = min(cursor.start.y, cursor.now.y);
+                int x2 = max(cursor.start.x, cursor.now.x), y2 = max(cursor.start.y, cursor.now.y);
 
                 HDC hdc = GetDC(hWnd);
                 SetROP2(hdc, R2_NOTXORPEN);
                 HPEN rbPen = CreatePen(PS_DOT, 1, RGB(0, 0, 0));
-                HGDIOBJ oldPen = SelectObject(hdc, rbPen);
                 HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(NULL_BRUSH));
 
                 switch (cursor.tool) {
@@ -343,7 +333,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                     case SHAPE_PATH: {
                         if (cursor.drawing && cursor.points.size() > 0) {
                             HPEN rbPen = CreatePen(PS_DOT, 1, RGB(0, 0, 0));
-                            HGDIOBJ oldPen = SelectObject(hdc, rbPen);
+                            SelectObject(hdc, rbPen);
 
                             MoveToEx(hdc, cursor.points[0].x, cursor.points[0].y, NULL);
                             for (int i = 1; i < (int)cursor.points.size(); i++)
@@ -357,7 +347,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                     }
                 }
 
-                SelectObject(hdc, oldPen);
                 SelectObject(hdc, oldBrush);
                 DeleteObject(rbPen);
                 ReleaseDC(hWnd, hdc);
@@ -461,6 +450,18 @@ INT_PTR CALLBACK Editor(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
         case WM_INITDIALOG: {
             UIRefresh(hDlg, lParam, wParam);
             currentCode = engine.Cast();
+
+            // Create a rich edit control for editor, since from dialog we can't yet
+            LoadLibrary(TEXT("msftedit.dll"));
+            HWND hEdit = CreateWindowEx(
+                0, MSFTEDIT_CLASS,
+                TEXT(""),
+                ES_MULTILINE | ES_AUTOHSCROLL | ES_WANTRETURN | WS_VISIBLE | WS_CHILD | WS_TABSTOP,
+                10, 10, 442, 233,
+                hDlg, (HMENU)IDC_EDITOR, hInst, NULL
+            );
+            SendMessage(hEdit, EM_SETTARGETDEVICE, (WPARAM)NULL, 0);
+
             SetDlgItemTextW(hDlg, IDC_EDITOR, currentCode.c_str());
             return (INT_PTR)TRUE;
         }
@@ -500,16 +501,14 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
             SetClassLongPtr(hDlg, GCLP_HBRBACKGROUND, (LONG_PTR)CreateSolidBrush(RGB(32, 32, 32)));
             UIRefresh(hDlg, lParam, wParam);
 
-            char programTitle[1024], programCopyright[1024];
+            char programTitle[1024];
 #if defined(DIM_CODENAME)
             sprintf_s(programTitle, "%s %s %s", DIM_TITLE, DIM_CODENAME, DIM_VERSION);
 #else
             sprintf_s(programTitle, "%s %s", DIM_TITLE, DIM_VERSION);
 #endif
-            sprintf_s(programCopyright, "\u00A9 %s", DIM_AUTHOR);
-
             SetWindowTextA(GetDlgItem(hDlg, IDC_DIM_TITLE), programTitle);
-            SetWindowTextA(GetDlgItem(hDlg, IDC_DIM_COPYRIGHT), programCopyright);
+
             return (INT_PTR)TRUE;
         }
         case WM_COMMAND: {
