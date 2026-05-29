@@ -1,6 +1,11 @@
 /*
     Dimension
     (c) LifesMinder
+
+    Module name:
+        dimension.cpp
+    Purpose:
+        This is the main executable file of Dimension client
 */
 
 #include "dimension.h"
@@ -11,16 +16,64 @@ HINSTANCE hInst; HWND hwnd;
 WCHAR szTitle[MAX_LOADSTRING], szWindowClass[MAX_LOADSTRING];
 // Program-specific variables
 Cursor cursor;
-bool isSaved = false, castableFile = true;
+bool isSaved = false;
 wstring currentFile = L"", currentCode = L"";
+map<int, wchar_t> flags;
+map<wstring, any> options;
 
 // Forward declarations of functions included in this code module
 void New();
 void Open();
 void Save(bool force);
+void Export();
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK Editor(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM);
+
+void CLI(__in LPWSTR lpCmdLine) {
+    int argc;
+    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    int realArgc = argc - 1;
+
+    if (argv != NULL && realArgc > 0) {
+        // Attach the console
+        FILE* f;
+        if (!AttachConsole(ATTACH_PARENT_PROCESS))
+            AllocConsole();
+        freopen_s(&f, "CONOUT$", "w", stdout);
+
+        // Traverse through the arguments.
+        // argv[0] is executable, real args start at 1
+        for (int i = 1; i < argc; i++) {
+            int index = i - 1;
+            wstring arg = argv[i];
+
+            if (arg[0] == L'-') {
+                if (arg.size() > 1 && arg[1] == L'-') {
+                    wstring key = arg.substr(2);
+                    options.emplace(key, L"");
+                } else if (arg.size() > 1) {
+                    flags.emplace(index, arg[1]);
+                }
+            } else if (arg[0] == L'/') {
+                size_t colon = arg.find(L":");
+                if (colon != wstring::npos) {
+                    wstring key = arg.substr(1, colon - 1), value = arg.substr(colon + 1);
+                    options.emplace(key, value);
+                }
+            }
+        }
+
+        // Work with options. To-Do: separate this exact logic
+        if (options.find(L"debug") != options.end()) {
+            cout << endl;
+            cout << "[Dimension] Debug mode is on" << endl;
+        }
+
+        LocalFree(argv);
+        fclose(f);
+    }
+}
 
 int
 APIENTRY
@@ -32,7 +85,9 @@ wWinMain(
 ) {
     // These guys are useless (at least for now)
     UNREFERENCED_PARAMETER(hPrevInstance);
-    UNREFERENCED_PARAMETER(lpCmdLine);
+
+    // Parse command line
+    CLI(lpCmdLine);
 
     // Initialize GDI+
     GdiplusStartupInput gdiplusStartupInput;
@@ -154,6 +209,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                 case IDM_SAVE: Save(true); break;
                 case IDM_SAVEAS: Save(false); break;
                 case IDM_EDIT: DialogBox(hInst, MAKEINTRESOURCE(IDD_EDITOR), hWnd, Editor); break;
+                //// Export
+                case ID_EXPORT_CURRENT: Export(); break;
                 case IDM_EXIT: DestroyWindow(hWnd); break;
                 // Edit
                 //// Toolbox
@@ -173,6 +230,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                     break;
                 }
                 //// Timeline
+                case ID_TIMELINE_PLAY: {
+                    if (engine.isPlaying) {
+                        engine.Pause();
+                    } else {
+                        engine.Play();
+                    }
+                    break;
+                }
+                case ID_TIMELINE_STOP: {
+                    engine.Pause();
+                    CheckMenuItem(GetMenu(hWnd), ID_TIMELINE_PLAY, MF_CHECKED);
+                    break;
+                }
                 case ID_TIMELINE_NEXT: engine.NextFrame(); break;
                 case ID_TIMELINE_PREVIOUS: engine.PreviousFrame(); break;
                 case ID_TIMELINE_NEW: {
@@ -224,10 +294,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                 cursor.drawing = false;
                 InvalidateRect(hWnd, NULL, FALSE);
             }
-            if (wParam == VK_RETURN && cursor.tool == SHAPE_PATH && cursor.drawing) {
-                FinishPath();
+            if (wParam == VK_RETURN) {
+                if (cursor.tool == SHAPE_PATH && cursor.drawing)
+                    FinishPath();
             }
             return 0;
+        }
+        case WM_TIMER: {
+            if (wParam == 1)
+                engine.NextFrame();
+            break;
         }
         case WM_LBUTTONDOWN: {
             cursor.start.x = cursor.now.x = LOWORD(lParam);
@@ -353,7 +429,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             }
             break;
         }
-        case WM_DESTROY: PostQuitMessage(0); break;
+        case WM_DESTROY: {
+            FreeConsole();
+            PostQuitMessage(0);
+            break;
+        }
         default: return DefWindowProc(hWnd, message, wParam, lParam);
     }
     return 0;
@@ -428,14 +508,27 @@ void Save(bool force) {
 
     wofstream stream(filePath, ios::out | ios::trunc);
     if (stream.good()) {
-        if (castableFile) {
-            stream << engine.Cast();
-        } else {
-            stream << currentCode;
-        }
+        stream << engine.Cast();
         isSaved = true;
     }
     stream.close();
+}
+void Export() {
+    OPENFILENAME ofn;
+    WCHAR szFileName[MAX_PATH] = L"";
+    ZeroMemory(&ofn, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hwnd;
+    ofn.lpstrFilter = TEXT("JPG/JPEG File\0*.jpeg\0");
+    ofn.lpstrFile = szFileName;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrTitle = TEXT("Export");
+    ofn.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT;
+    ofn.lpstrDefExt = TEXT("jpg");
+    if (GetSaveFileName(&ofn)) {
+        wstring path = wstring(szFileName);
+        engine.Export(path, engine.currentFrame);
+    }
 }
 
 // Message handler for the editor

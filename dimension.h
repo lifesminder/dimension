@@ -1,6 +1,11 @@
 /*
 	Dimension
 	(c) LifesMinder
+
+    Module name:
+        dimension.cpp
+    Purpose:
+        This is the main header file of Dimension client
 */
 
 #ifndef DIMENSION_H
@@ -17,6 +22,7 @@
 #include <strsafe.h>
 #include <versionhelpers.h>
 #include <Richedit.h>
+#include <shellapi.h>
 //// Windows 10 and later
 #include <dwmapi.h>
 #include <uxtheme.h>

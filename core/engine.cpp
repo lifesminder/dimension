@@ -104,11 +104,29 @@ int Engine::OptionInt(Shape shape, wstring name, int byDefault) {
 }
 
 // Frames
+void Engine::Play() {
+	unsigned int fps = this->GetAs<unsigned int>(L"fps", 15);
+	SetTimer(this->hWnd, 1, 1000 / fps, NULL);
+	this->isPlaying = true;
+}
+void Engine::Pause() {
+	KillTimer(this->hWnd, 1);
+	this->isPlaying = false;
+}
+void Engine::Stop() {
+	KillTimer(this->hWnd, 1);
+	this->isPlaying = false;
+	this->currentFrame = 0;
+	InvalidateRect(this->hWnd, NULL, FALSE);
+}
+
 void Engine::NextFrame() {
 	if (this->currentFrame + 1 < this->frames.size()) {
 		this->currentFrame++;
 	} else if (this->GetAs<bool>(L"frameLoop", false)) {
 		this->currentFrame = 0;
+	} else {
+		this->Pause();
 	}
 	InvalidateRect(this->hWnd, NULL, TRUE);
 	UpdateWindow(this->hWnd);
@@ -119,23 +137,29 @@ void Engine::PreviousFrame() {
 		this->currentFrame--;
 	} else if (this->GetAs<bool>(L"frameLoop", false)) {
 		this->currentFrame = (unsigned int)this->frames.size() - 1;
+	} else {
+		this->Pause();
 	}
 	InvalidateRect(this->hWnd, NULL, TRUE);
 	UpdateWindow(this->hWnd);
 }
 
 // Drawing
-void Engine::Draw() {
+void Engine::Draw(__out_opt Bitmap *target) {
 	PAINTSTRUCT ps;
+	bool targeted = (target != nullptr);
+
 	if (this->hWnd) {
 		HDC hdc = BeginPaint(this->hWnd, &ps);
 
 		// Scene drawing structure
 		RECT clientRect;
 		GetClientRect(this->hWnd, &clientRect);
-		int clientWidth = clientRect.right - clientRect.left, clientHeight = clientRect.bottom - clientRect.top;
 		const int canvasW = this->GetAs<int>(L"width", 800), canvasH = this->GetAs<int>(L"height", 600);
-		int canvasX = (clientWidth - canvasW) / 2, canvasY = (clientHeight - canvasH) / 2;
+		int clientWidth = (targeted) ? canvasW : clientRect.right - clientRect.left,
+			clientHeight = (targeted) ? canvasH : clientRect.bottom - clientRect.top;
+		int canvasX = (targeted) ? 0 : (clientWidth - canvasW) / 2,
+			canvasY = (targeted) ? 0 : (clientHeight - canvasH) / 2;
 
 		// Double-buffer
 		HDC memDC = CreateCompatibleDC(hdc);
@@ -149,16 +173,16 @@ void Engine::Draw() {
 		FillRect(memDC, &fullRect, clearBrush);
 		DeleteObject(clearBrush);
 
-		Graphics graphics(memDC);
-		graphics.SetSmoothingMode(SmoothingModeAntiAlias);
-		graphics.SetTextRenderingHint(TextRenderingHintAntiAlias);
-		graphics.SetPixelOffsetMode(PixelOffsetModeHighQuality);
+		Graphics* graphics = (target != nullptr) ? new Graphics(target) : new Graphics(memDC);
+		graphics->SetSmoothingMode(SmoothingModeAntiAlias);
+		graphics->SetTextRenderingHint(TextRenderingHintAntiAlias);
+		graphics->SetPixelOffsetMode(PixelOffsetModeHighQuality);
 
 		// Scene differentiator
 		SolidBrush sceneBrush(Color(255, 255, 255, 255));
 		Pen scenePen(Color(255, 255, 255, 255), 1);
-		graphics.FillRectangle(&sceneBrush, canvasX, canvasY, canvasW, canvasH);
-		graphics.DrawRectangle(&scenePen, canvasX, canvasY, canvasW, canvasH);
+		graphics->FillRectangle(&sceneBrush, canvasX, canvasY, canvasW, canvasH);
+		graphics->DrawRectangle(&scenePen, canvasX, canvasY, canvasW, canvasH);
 
 		if (this->frames.size() > 0 && this->currentFrame < this->frames.size()) {
 			Frame& frame = this->frames[this->currentFrame];
@@ -180,13 +204,13 @@ void Engine::Draw() {
 
 				switch (shape.type) {
 					case SHAPE_RECTANGLE:
-						graphics.DrawRectangle(&pen, x, y, width, height);
+						graphics->DrawRectangle(&pen, x, y, width, height);
 						break;
 					case SHAPE_ELLIPSE:
-						graphics.DrawEllipse(&pen, x, y, width, height);
+						graphics->DrawEllipse(&pen, x, y, width, height);
 						break;
 					case SHAPE_LINE:
-						graphics.DrawLine(&pen, x, y, this->OptionInt(shape, L"x2") + canvasX, this->OptionInt(shape, L"y2") + canvasY);
+						graphics->DrawLine(&pen, x, y, this->OptionInt(shape, L"x2") + canvasX, this->OptionInt(shape, L"y2") + canvasY);
 						break;
 					case SHAPE_TEXT: {
 						wstring fontName = this->Option(shape, L"font");
@@ -198,7 +222,7 @@ void Engine::Draw() {
 						FontFamily fontFamily(fontName.data());
 						Font font(&fontFamily, (REAL)size, FontStyleRegular, UnitPixel);
 						PointF point((REAL)x, (REAL)y);
-						graphics.DrawString(contentPre.data(), -1, &font, point, &brush);
+						graphics->DrawString(contentPre.data(), -1, &font, point, &brush);
 						break;
 					}
 					case SHAPE_PATH: {
@@ -228,7 +252,7 @@ void Engine::Draw() {
 							}
 							j++;
 						}
-						graphics.DrawPath(&pen, &path);
+						graphics->DrawPath(&pen, &path);
 						break;
 					}
 				}

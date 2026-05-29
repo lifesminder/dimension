@@ -69,6 +69,7 @@ class Engine {
 	public:
 		vector<Frame> frames;
 		unsigned int currentFrame = 0;
+		bool isPlaying = false;
 
 		DIM_API Engine(HWND hWnd);
 		DIM_API Engine();
@@ -83,13 +84,14 @@ class Engine {
 		DIM_API int DeleteFrame(int id);
 		DIM_API int DeleteShape(int id, int shapeId);
 		// Frames
+		DIM_API void Play();
+		DIM_API void Pause();
+		DIM_API void Stop();
 		DIM_API void NextFrame();
 		DIM_API void PreviousFrame();
 		// Options
 		DIM_API any Get(wstring option, any fallback);
 		DIM_API void Set(wstring option, any value);
-
-		// Functionality
 		template<typename T> T GetAs(wstring name, T fallback) {
 			auto it = this->options.find(name);
 			if (it != this->options.end()) {
@@ -98,10 +100,12 @@ class Engine {
 			}
 			return fallback;
 		}
-		DIM_API void Draw();
+		// Functionality
+		DIM_API void Draw(__out_opt Bitmap *target = nullptr);
 		DIM_API void Parse(__in LPWSTR code); // To-Do: rename
 		DIM_API void Clean();
 		DIM_API wstring Cast();
+		DIM_API void Export(wstring path, int frame = -1);
 };
 
 wstring Trim(const wstring& s);
