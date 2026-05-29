@@ -549,7 +549,7 @@ INT_PTR CALLBACK Editor(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
             HWND hEdit = CreateWindowEx(
                 0, MSFTEDIT_CLASS,
                 TEXT(""),
-                ES_MULTILINE | ES_AUTOHSCROLL | ES_WANTRETURN | WS_VISIBLE | WS_CHILD | WS_TABSTOP,
+                ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VISIBLE | WS_CHILD | WS_TABSTOP | WS_VSCROLL,
                 10, 10, 442, 233,
                 hDlg, (HMENU)IDC_EDITOR, hInst, NULL
             );
