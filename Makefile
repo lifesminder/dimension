@@ -1,0 +1,3 @@
+build:
+	echo Building Dimension...
+	g++ -o dimension_gcc.exe dimension.cpp core/engine.cpp core/cli.cpp core/dimcore.cpp -Icore/ -mwindows -municode -lgdiplus -lcomctl32

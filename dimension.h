@@ -19,7 +19,6 @@
 #include <commdlg.h>
 #include <objidl.h>
 #include <gdiplus.h>
-#include <strsafe.h>
 #include <versionhelpers.h>
 #include <Richedit.h>
 #include <shellapi.h>
@@ -36,6 +35,7 @@
 #include <malloc.h>
 #include <memory.h>
 #include <tchar.h>
+#include <strsafe.h>
 // C++ RunTime Header Files
 #include <iostream>
 #include <vector>
@@ -50,6 +50,12 @@
 #pragma once
 #include "Resource.h"
 
+// Special strings
+#if defined(__GNUC__)
+    #define __in
+    #define __out
+#endif
+
 #ifndef MAX_LOADSTRING
 	#define MAX_LOADSTRING 256
 #endif
@@ -60,20 +66,26 @@ using namespace Gdiplus;
 // Functionality
 bool DimCoreIsDark();
 void MakeMenuOwnerDraw(HMENU hMenu);
-static bool GetMenuBarRect(HWND hwnd, RECT& rc);
 void PaintMenuBar(HWND hwnd);
 int UIRefresh(HWND hWnd, LPARAM lParam = NULL, WPARAM wParam = NULL, int code = 0);
 void DrawDarkMenuBar(HWND hwnd, HDC hdc);
 COLORREF ShowColorDialog(HWND hwnd);
 
+// Inter-usable
+void CLI();
+
+typedef struct _PathPoint {
+    POINT point = { 0, 0 }, controlPoint = { 0, 0 };
+    bool smooth = false;
+} PathPoint;
 typedef struct _Cursor {
     COLORREF color = RGB(0, 0, 0);
     ShapeType tool = SHAPE_NONE;
-    POINT start = { 0, 0 }, now = { 0, 0 };
-    vector<POINT> points;
+    POINT start = { 0, 0 }, now = { 0, 0 }, drag = { 0, 0 };
+    vector<POINT> points; vector<PathPoint> pathPoints;
 
     unsigned int size = 1;
-    bool drawing = false;
+    bool drawing = false, dragging = false;
 } Cursor;
 
 // Shell Manifest

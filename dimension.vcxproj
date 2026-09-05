@@ -175,6 +175,7 @@
     <ClInclude Include="theme.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="cli.cpp" />
     <ClCompile Include="dimension.cpp" />
     <ClCompile Include="helpers.cpp" />
     <ClCompile Include="theme.cpp" />

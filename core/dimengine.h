@@ -6,12 +6,18 @@
 #ifndef DIM_ENGINE_H
 #define DIM_ENGINE_H
 
-#define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers
 // Windows Header Files
 #include <windows.h>
 #include <objidl.h>
 #include <gdiplus.h>
 #pragma comment(lib, "Gdiplus.lib")
+// Dimension EngineV2
+#include <d2d1.h>
+#include <d2d1helper.h>
+#include <dwrite.h>
+#include <wincodec.h>
+#pragma comment(lib, "d2d1.lib")
+#pragma comment(lib, "dwrite.lib")
 // C++ RunTime Header Files
 #include <iostream>
 #include <sstream>
@@ -21,6 +27,12 @@
 #include <algorithm>
 #include <map>
 #include <any>
+
+// Special strings
+#if defined(__GNUC__)
+    #define __in
+    #define __out
+#endif
 
 using namespace std;
 using namespace Gdiplus;
@@ -40,10 +52,11 @@ typedef enum {
 	SHAPE_PATH,
 } ShapeType;
 
-typedef struct {
+typedef struct _Shape {
 	int id;
 	ShapeType type;
 	map<wstring, any> options;
+	volatile bool selected = false;
 } Shape;
 
 typedef struct {
@@ -58,6 +71,8 @@ extern "C" {
 class Engine {
 	private:
 		HWND hWnd;
+		ID2D1Factory* factory = nullptr;
+		ID2D1DCRenderTarget* target = nullptr;
 		ULONG_PTR gdiplustoken;
 
 		map<wstring, any> options;
@@ -69,11 +84,14 @@ class Engine {
 	public:
 		vector<Frame> frames;
 		unsigned int currentFrame = 0;
-		bool isPlaying = false;
+		bool isPlaying = false, isV2 = false;
 
 		DIM_API Engine(HWND hWnd);
 		DIM_API Engine();
 		DIM_API ~Engine();
+
+		// EngineV2
+		DIM_API wstring Interpret();
 
 		// Basics
 		DIM_API int CreateFrame(Frame frame);
@@ -83,6 +101,7 @@ class Engine {
 		DIM_API int EditShape(int id, int shapeId, Shape shape);
 		DIM_API int DeleteFrame(int id);
 		DIM_API int DeleteShape(int id, int shapeId);
+		DIM_API bool HitTest(Shape shape, int px, int py);
 		// Frames
 		DIM_API void Play();
 		DIM_API void Pause();
@@ -101,6 +120,7 @@ class Engine {
 			return fallback;
 		}
 		// Functionality
+		DIM_API void DrawV2(HDC hdc);
 		DIM_API void Draw(__out_opt Bitmap *target = nullptr);
 		DIM_API void Parse(__in LPWSTR code); // To-Do: rename
 		DIM_API void Clean();

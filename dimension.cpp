@@ -18,8 +18,7 @@ WCHAR szTitle[MAX_LOADSTRING], szWindowClass[MAX_LOADSTRING];
 Cursor cursor;
 bool isSaved = false;
 wstring currentFile = L"", currentCode = L"";
-map<int, wchar_t> flags;
-map<wstring, any> options;
+map<int, wchar_t> flags; map<wstring, any> options;
 
 // Forward declarations of functions included in this code module
 void New();
@@ -29,51 +28,6 @@ void Export();
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK Editor(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM);
-
-void CLI(__in LPWSTR lpCmdLine) {
-    int argc;
-    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-    int realArgc = argc - 1;
-
-    if (argv != NULL && realArgc > 0) {
-        // Attach the console
-        FILE* f;
-        if (!AttachConsole(ATTACH_PARENT_PROCESS))
-            AllocConsole();
-        freopen_s(&f, "CONOUT$", "w", stdout);
-
-        // Traverse through the arguments.
-        // argv[0] is executable, real args start at 1
-        for (int i = 1; i < argc; i++) {
-            int index = i - 1;
-            wstring arg = argv[i];
-
-            if (arg[0] == L'-') {
-                if (arg.size() > 1 && arg[1] == L'-') {
-                    wstring key = arg.substr(2);
-                    options.emplace(key, L"");
-                } else if (arg.size() > 1) {
-                    flags.emplace(index, arg[1]);
-                }
-            } else if (arg[0] == L'/') {
-                size_t colon = arg.find(L":");
-                if (colon != wstring::npos) {
-                    wstring key = arg.substr(1, colon - 1), value = arg.substr(colon + 1);
-                    options.emplace(key, value);
-                }
-            }
-        }
-
-        // Work with options. To-Do: separate this exact logic
-        if (options.find(L"debug") != options.end()) {
-            cout << endl;
-            cout << "[Dimension] Debug mode is on" << endl;
-        }
-
-        LocalFree(argv);
-        fclose(f);
-    }
-}
 
 int
 APIENTRY
@@ -87,7 +41,8 @@ wWinMain(
     UNREFERENCED_PARAMETER(hPrevInstance);
 
     // Parse command line
-    CLI(lpCmdLine);
+    UNREFERENCED_PARAMETER(lpCmdLine); // <- this is done, because it's unusable for parsing, at least... for now
+    CLI();
 
     // Initialize GDI+
     GdiplusStartupInput gdiplusStartupInput;
@@ -125,13 +80,13 @@ wWinMain(
     );
     if (hwnd) {
         engine = Engine(hwnd);
+        UIRefresh(hwnd, 0, 0);
     } else {
         return FALSE;
     }
 
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
-    UIRefresh(hwnd, 0, 0);
 
     HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_DIMENSION));
     MSG msg;
@@ -161,17 +116,27 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
     LRESULT lr = 0;
     auto FinishPath = [&]() {
         cursor.drawing = false;
-        if (cursor.points.size() < 2) { cursor.points.clear(); return; }
+        if (cursor.pathPoints.size() < 2) {
+            cursor.pathPoints.clear();
+            cursor.points.clear();
+            return;
+        }
 
         RECT clientRect;
         GetClientRect(hwnd, &clientRect);
-        unsigned int canvasW = engine.GetAs<int>(L"width", 800), canvasH = engine.GetAs<int>(L"height", 600);
-        int cx = (clientRect.right - canvasW) / 2, cy = (clientRect.bottom - canvasH) / 2;
+        int canvasW = engine.GetAs<int>(L"width", 800);
+        int canvasH = engine.GetAs<int>(L"height", 600);
+        int cx = (clientRect.right - canvasW) / 2;
+        int cy = (clientRect.bottom - canvasH) / 2;
 
         Shape sh = { .id = -1, .type = SHAPE_PATH };
-        for (int i = 0; i < (int)cursor.points.size(); i++) {
-            sh.options[L"x" + to_wstring(i + 1)] = to_wstring(cursor.points[i].x - cx);
-            sh.options[L"y" + to_wstring(i + 1)] = to_wstring(cursor.points[i].y - cy);
+        for (int i = 0; i < (int)cursor.pathPoints.size(); i++) {
+            sh.options[L"x" + to_wstring(i + 1)] = to_wstring(cursor.pathPoints[i].point.x - cx);
+            sh.options[L"y" + to_wstring(i + 1)] = to_wstring(cursor.pathPoints[i].point.y - cy);
+            if (cursor.pathPoints[i].smooth) {
+                sh.options[L"cx" + to_wstring(i + 1)] = to_wstring(cursor.pathPoints[i].controlPoint.x - cx);
+                sh.options[L"cy" + to_wstring(i + 1)] = to_wstring(cursor.pathPoints[i].controlPoint.y - cy);
+            }
         }
         sh.options[L"r"] = to_wstring(GetRValue(cursor.color));
         sh.options[L"g"] = to_wstring(GetGValue(cursor.color));
@@ -181,6 +146,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         if (engine.frames.empty()) engine.CreateFrame(Frame());
         engine.CreateShape(sh);
         currentCode = engine.Cast();
+        cursor.pathPoints.clear();
         cursor.points.clear();
         isSaved = false;
         InvalidateRect(hwnd, NULL, FALSE);
@@ -230,19 +196,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                     break;
                 }
                 //// Timeline
-                case ID_TIMELINE_PLAY: {
-                    if (engine.isPlaying) {
-                        engine.Pause();
-                    } else {
-                        engine.Play();
-                    }
-                    break;
-                }
-                case ID_TIMELINE_STOP: {
-                    engine.Pause();
-                    CheckMenuItem(GetMenu(hWnd), ID_TIMELINE_PLAY, MF_CHECKED);
-                    break;
-                }
+                case ID_TIMELINE_PLAY: (engine.isPlaying) ? engine.Pause() : engine.Play(); break;
+                case ID_TIMELINE_STOP: engine.Pause(); break;
                 case ID_TIMELINE_NEXT: engine.NextFrame(); break;
                 case ID_TIMELINE_PREVIOUS: engine.PreviousFrame(); break;
                 case ID_TIMELINE_NEW: {
@@ -283,6 +238,27 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                 case ID_BRUSH_DECREASE: cursor.size = (cursor.size > 1) ? --cursor.size : 1; break;
                 case ID_BRUSH_RESET: cursor.size = 1; break;
                 case ID_BRUSH_COLOR: cursor.color = ShowColorDialog(hWnd); break;
+                //// Shape operations
+                case ID_SHAPE_DELETE: {
+                    if (engine.frames.size() > 0) {
+                        auto& shapes = engine.frames[engine.currentFrame].shapes;
+                        if (shapes.size() > 0) {
+                            for (int i = (int)shapes.size() - 1; i >= 0; i--) {
+                                if (shapes[i].selected) {
+                                    shapes.erase(shapes.begin() + i);
+                                }
+                            }
+                            InvalidateRect(hWnd, NULL, FALSE);
+                        }
+                    }
+                    break;
+                }
+                // Flags
+                case ID_FLAG_ENGINEV2: {
+                    engine.isV2 = !engine.isV2;
+                    CheckMenuItem(GetMenu(hWnd), ID_FLAG_ENGINEV2, engine.isV2 ? MF_CHECKED : MF_UNCHECKED);
+                    break;
+                }
                 // Help
                 case IDM_ABOUT: DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About); break;
                 default: return DefWindowProc(hWnd, message, wParam, lParam);
@@ -306,11 +282,33 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             break;
         }
         case WM_LBUTTONDOWN: {
+            cursor.dragging = false;
+            cursor.drag = { LOWORD(lParam), HIWORD(lParam) };
             cursor.start.x = cursor.now.x = LOWORD(lParam);
             cursor.start.y = cursor.now.y = HIWORD(lParam);
-            if (cursor.tool == SHAPE_PATH) {
+
+            if (cursor.tool == SHAPE_NONE) {
+                RECT rc; GetClientRect(hWnd, &rc);
+                int canvasW = engine.GetAs<int>(L"width", 800), canvasH = engine.GetAs<int>(L"height", 600);
+                int cx = (rc.right - canvasW) / 2, cy = (rc.bottom - canvasH) / 2;
+                int px = cursor.start.x - cx, py = cursor.start.y - cy;
+
+                if (!engine.frames.empty()) {
+                    auto& shapes = engine.frames[engine.currentFrame].shapes;
+                    // single-select: clear first
+                    for (auto& s : shapes)
+                        s.selected = false;
+                    for (int i = (int)shapes.size() - 1; i >= 0; i--) {
+                        // topmost first
+                        if (engine.HitTest(shapes[i], px, py)) {
+                            shapes[i].selected = true;
+                            break;
+                        }
+                    }
+                }
+            } else if (cursor.tool == SHAPE_PATH) {
                 cursor.drawing = true;
-                cursor.points.push_back({ LOWORD(lParam), HIWORD(lParam) });
+                cursor.drag = { LOWORD(lParam), HIWORD(lParam) };
             } else {
                 cursor.drawing = (cursor.tool != SHAPE_NONE);
             }
@@ -320,24 +318,46 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         case WM_MOUSEMOVE: {
             cursor.now.x = LOWORD(lParam);
             cursor.now.y = HIWORD(lParam);
-            if (cursor.drawing)
+            if (cursor.drawing) {
+                if (cursor.tool == SHAPE_PATH && (wParam & MK_LBUTTON)) {
+                    cursor.dragging = true;
+                }
                 InvalidateRect(hWnd, NULL, FALSE);
+            }
             return 0;
         }
         case WM_LBUTTONUP: {
             if (!cursor.drawing) return 0;
-            if (cursor.tool == SHAPE_PATH) return 0;
-            cursor.drawing = false;
+            if (cursor.tool != SHAPE_PATH) cursor.drawing = false;
 
             // get canvas offset from engine
             RECT clientRect;
             GetClientRect(hWnd, &clientRect);
             int clientWidth = clientRect.right, clientHeight = clientRect.bottom;
             int canvasW = engine.GetAs<int>(L"width", 800), canvasH = engine.GetAs<int>(L"height", 600);
+            int cx = (clientWidth - canvasW) / 2, cy = (clientHeight - canvasH) / 2;
+
+            // check for path being
+            if (cursor.tool == SHAPE_PATH) {
+                // check being close to first point
+                if (cursor.pathPoints.size() >= 2) {
+                    int dx = (int)LOWORD(lParam) - cursor.pathPoints[0].point.x, dy = (int)HIWORD(lParam) - cursor.pathPoints[0].point.y;
+                    if (dx * dx + dy * dy < 15 * 15) { // ???
+                        FinishPath();
+                        return 0;
+                    }
+                }
+
+                PathPoint p = { .point = cursor.drag, .smooth = cursor.dragging };
+                p.controlPoint = (cursor.dragging) ? POINT{ cursor.now.x, cursor.now.y } : cursor.drag;
+                cursor.pathPoints.push_back(p);
+                cursor.points.push_back(cursor.drag);
+                InvalidateRect(hWnd, NULL, FALSE);
+                cursor.dragging = false;
+            }
 
             // build shape — subtract canvas offset so coords are canvas-relative
             Shape sh = { .id = -1, .type = cursor.tool };
-            int cx = (clientWidth - canvasW) / 2, cy = (clientHeight - canvasH) / 2;
 
             if (cursor.tool == SHAPE_LINE) {
                 // lines keep exact start/end points, no min/max normalization
@@ -346,10 +366,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                 sh.options[L"x2"] = to_wstring(cursor.now.x - cx);
                 sh.options[L"y2"] = to_wstring(cursor.now.y - cy);
             } else {
-                int x1 = min(cursor.start.x, cursor.now.x) - cx;
-                int y1 = min(cursor.start.y, cursor.now.y) - cy;
-                int x2 = max(cursor.start.x, cursor.now.x) - cx;
-                int y2 = max(cursor.start.y, cursor.now.y) - cy;
+                int x1 = min(cursor.start.x, cursor.now.x) - cx, y1 = min(cursor.start.y, cursor.now.y) - cy;
+                int x2 = max(cursor.start.x, cursor.now.x) - cx, y2 = max(cursor.start.y, cursor.now.y) - cy;
                 sh.options[L"x"] = to_wstring(x1);
                 sh.options[L"y"] = to_wstring(y1);
                 sh.options[L"width"] = to_wstring(x2 - x1);
@@ -380,7 +398,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             return 0;
         }
         case WM_PAINT: {
-            engine.Draw();
+            if (engine.isV2) {
+                PAINTSTRUCT ps;
+                HDC hdc = BeginPaint(hWnd, &ps);
+                engine.DrawV2(hdc);
+                EndPaint(hWnd, &ps);
+            } else {
+                engine.Draw();
+            }
+
             // rubber band overlay
             if (cursor.drawing && cursor.tool != SHAPE_NONE) {
                 RECT cr;
@@ -393,9 +419,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                 HDC hdc = GetDC(hWnd);
                 SetROP2(hdc, R2_NOTXORPEN);
                 HPEN rbPen = CreatePen(PS_DOT, 1, RGB(0, 0, 0));
-                HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(NULL_BRUSH));
+                HGDIOBJ oldPen = SelectObject(hdc, rbPen), oldBrush = SelectObject(hdc, GetStockObject(NULL_BRUSH));
 
                 switch (cursor.tool) {
+                    case SHAPE_NONE:
                     case SHAPE_RECTANGLE:
                         Rectangle(hdc, x1, y1, x2, y2);
                         break;
@@ -407,22 +434,51 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                         LineTo(hdc, cursor.now.x, cursor.now.y);
                         break;
                     case SHAPE_PATH: {
-                        if (cursor.drawing && cursor.points.size() > 0) {
-                            HPEN rbPen = CreatePen(PS_DOT, 1, RGB(0, 0, 0));
-                            SelectObject(hdc, rbPen);
+                        if (cursor.drawing && cursor.pathPoints.size() > 0) {
+                            MoveToEx(hdc, cursor.pathPoints[0].point.x, cursor.pathPoints[0].point.y, NULL);
 
-                            MoveToEx(hdc, cursor.points[0].x, cursor.points[0].y, NULL);
-                            for (int i = 1; i < (int)cursor.points.size(); i++)
-                                LineTo(hdc, cursor.points[i].x, cursor.points[i].y);
+                            for (int i = 1; i < (int)cursor.pathPoints.size(); i++) {
+                                PathPoint previous = cursor.pathPoints[i - 1], current = cursor.pathPoints[i];
+                                if (previous.smooth || current.smooth) {
+                                    // outgoing handle of previous point
+                                    POINT c1 = previous.smooth ? previous.controlPoint : previous.point;
+                                    // incoming handle of current = reflection of its stored (outgoing) handle
+                                    POINT c2 = current.smooth
+                                        ? POINT{ 2 * current.point.x - current.controlPoint.x,
+                                                 2 * current.point.y - current.controlPoint.y }
+                                    : current.point;
+                                    POINT points[3] = { c1, c2, current.point };
+                                    MoveToEx(hdc, previous.point.x, previous.point.y, NULL);
+                                    PolyBezierTo(hdc, points, sizeof(points) / sizeof(points[0]));
+                                }
+                                else {
+                                    MoveToEx(hdc, previous.point.x, previous.point.y, NULL);
+                                    LineTo(hdc, current.point.x, current.point.y);
+                                }
+                            }
 
-                            // preview line to current mouse
+                            // preview segment from last placed point to the point being dragged
+                            PathPoint last = cursor.pathPoints.back();
                             SetROP2(hdc, R2_NOTXORPEN);
-                            LineTo(hdc, cursor.now.x, cursor.now.y);
+                            MoveToEx(hdc, last.point.x, last.point.y, NULL);
+                            if (cursor.dragging) {
+                                // outgoing handle of last point
+                                POINT c1 = last.smooth ? last.controlPoint : last.point;
+                                // incoming handle of the point being dragged, reflection of current cursor and across anchor (draggable cursor)
+                                POINT c2 = { 2 * cursor.drag.x - cursor.now.x, 2 * cursor.drag.y - cursor.now.y };
+                                POINT seg[3] = { c1, c2, cursor.drag };
+                                PolyBezierTo(hdc, seg, 3);
+                                MoveToEx(hdc, cursor.drag.x, cursor.drag.y, NULL);
+                                LineTo(hdc, cursor.now.x, cursor.now.y);
+                            } else {
+                                LineTo(hdc, cursor.now.x, cursor.now.y);
+                            }
                         }
                         break;
                     }
                 }
 
+                SelectObject(hdc, oldPen);
                 SelectObject(hdc, oldBrush);
                 DeleteObject(rbPen);
                 ReleaseDC(hWnd, hdc);
@@ -442,7 +498,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 // File basic routines
 void New() {
     if (!isSaved && currentCode != L"") {
-        int confirm = MessageBox(hwnd, L"Do you wish to save this file before creating new one?", szTitle, MB_YESNOCANCEL | MB_ICONINFORMATION);
+        int confirm = MessageBoxW(hwnd, L"Do you wish to save this file before creating new one?", szTitle, MB_YESNOCANCEL | MB_ICONINFORMATION);
         if (confirm == IDCANCEL) return;
         if (confirm == IDYES) Save(true);
     }
@@ -454,18 +510,18 @@ void New() {
     isSaved = true;
 }
 void Open() {
-    OPENFILENAME ofn;
+    OPENFILENAMEW ofn;
     WCHAR szFileName[MAX_PATH] = L"";
     ZeroMemory(&ofn, sizeof(ofn));
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = hwnd;
-    ofn.lpstrFilter = TEXT("Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0");
+    ofn.lpstrFilter = L"Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0";
     ofn.lpstrFile = szFileName;
     ofn.nMaxFile = MAX_PATH;
     ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
-    ofn.lpstrDefExt = TEXT("txt");
+    ofn.lpstrDefExt = L"txt";
 
-    if (GetOpenFileName(&ofn)) {
+    if (GetOpenFileNameW(&ofn)) {
         currentFile = szFileName;
         wifstream stream(szFileName, ios::in);
         if (stream.is_open()) {
@@ -488,25 +544,25 @@ void Save(bool force) {
     wstring filePath = currentFile;
 
     if (!force || currentFile.empty()) {
-        OPENFILENAME ofn;
+        OPENFILENAMEW ofn;
         WCHAR szFileName[MAX_PATH] = L"";
         ZeroMemory(&ofn, sizeof(ofn));
         ofn.lStructSize = sizeof(ofn);
         ofn.hwndOwner = hwnd;
-        ofn.lpstrFilter = TEXT("Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0");
+        ofn.lpstrFilter = L"Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0";
         ofn.lpstrFile = szFileName;
         ofn.nMaxFile = MAX_PATH;
-        ofn.lpstrTitle = (!force) ? TEXT("Save As") : TEXT("Save");
+        ofn.lpstrTitle = (!force) ? L"Save As" : L"Save";
         ofn.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT;
-        ofn.lpstrDefExt = TEXT("txt");
-        if (!GetSaveFileName(&ofn))
+        ofn.lpstrDefExt = L"txt";
+        if (!GetSaveFileNameW(&ofn))
             return;
 
         filePath = wstring(szFileName);
         currentFile = filePath;
     }
 
-    wofstream stream(filePath, ios::out | ios::trunc);
+    wofstream stream(filePath.c_str(), ios::out | ios::trunc);
     if (stream.good()) {
         stream << engine.Cast();
         isSaved = true;
@@ -514,18 +570,19 @@ void Save(bool force) {
     stream.close();
 }
 void Export() {
-    OPENFILENAME ofn;
+    OPENFILENAMEW ofn;
     WCHAR szFileName[MAX_PATH] = L"";
     ZeroMemory(&ofn, sizeof(ofn));
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = hwnd;
-    ofn.lpstrFilter = TEXT("JPG/JPEG File\0*.jpeg\0");
+    ofn.lpstrFilter = L"JPG/JPEG File\0*.jpeg\0";
     ofn.lpstrFile = szFileName;
     ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrTitle = TEXT("Export");
+    ofn.lpstrTitle = L"Export";
     ofn.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT;
-    ofn.lpstrDefExt = TEXT("jpg");
-    if (GetSaveFileName(&ofn)) {
+    ofn.lpstrDefExt = L"jpg";
+
+    if (GetSaveFileNameW(&ofn)) {
         wstring path = wstring(szFileName);
         engine.Export(path, engine.currentFrame);
     }
@@ -538,7 +595,9 @@ INT_PTR CALLBACK Editor(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
         case WM_CTLCOLORDLG:
         case WM_CTLCOLORSTATIC:
         case WM_CTLCOLORBTN: {
-            return UIRefresh(hDlg, lParam, wParam, message);
+            if (DimCoreIsDark())
+                return UIRefresh(hDlg, lParam, wParam, message);
+            return 0;
         }
         case WM_INITDIALOG: {
             UIRefresh(hDlg, lParam, wParam);
@@ -547,15 +606,19 @@ INT_PTR CALLBACK Editor(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
             // Create a rich edit control for editor, since from dialog we can't yet
             LoadLibrary(TEXT("msftedit.dll"));
             HWND hEdit = CreateWindowEx(
-                0, MSFTEDIT_CLASS,
-                TEXT(""),
+                0, TEXT("RICHEDIT50W"), TEXT(""),
                 ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VISIBLE | WS_CHILD | WS_TABSTOP | WS_VSCROLL,
                 10, 10, 442, 233,
                 hDlg, (HMENU)IDC_EDITOR, hInst, NULL
             );
             SendMessage(hEdit, EM_SETTARGETDEVICE, (WPARAM)NULL, 0);
 
-            SetDlgItemTextW(hDlg, IDC_EDITOR, currentCode.c_str());
+            if (engine.isV2) {
+                wstring code = engine.Interpret();
+                SetDlgItemTextW(hDlg, IDC_EDITOR, code.c_str());
+            } else {
+                SetDlgItemTextW(hDlg, IDC_EDITOR, currentCode.c_str());
+            }
             return (INT_PTR)TRUE;
         }
         case WM_COMMAND: {
@@ -588,7 +651,9 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
         case WM_CTLCOLORDLG:
         case WM_CTLCOLORSTATIC:
         case WM_CTLCOLORBTN: {
-            return UIRefresh(hDlg, lParam, wParam, message);
+            if (DimCoreIsDark())
+                return UIRefresh(hDlg, lParam, wParam, message);
+            return 0;
         }
         case WM_INITDIALOG: {
             SetClassLongPtr(hDlg, GCLP_HBRBACKGROUND, (LONG_PTR)CreateSolidBrush(RGB(32, 32, 32)));

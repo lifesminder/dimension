@@ -21,6 +21,8 @@
 #define ID_TOOLBOX_ELLIPSE              2002
 #define ID_TOOLBOX_LINE                 2003
 #define ID_TOOLBOX_PATH                 2004
+#define ID_SHAPE_DELETE					3000
+#define ID_FLAG_ENGINEV2				9000
 #define IDM_NEW                         32771
 #define IDM_OPEN                        32772
 #define IDM_SAVE                        32773

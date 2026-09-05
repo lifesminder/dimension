@@ -13,11 +13,20 @@
 extern HWND hwnd;
 extern Engine engine;
 extern Cursor cursor;
+extern map<int, wchar_t> flags;
+extern map<wstring, any> options;
 
 bool DimCoreIsDark() {
     HKEY hKey;
     long lRes = RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", 0, KEY_READ, &hKey);
     bool bDarkMode = false;
+
+    // If options contain such flag, return it's value
+    auto darkmodeOption = options.find(L"darkmode");
+    if (darkmodeOption != options.end()) {
+        wstring text = any_cast<wstring>(darkmodeOption->second);
+        return (text == L"true");
+    }
 
     // if (!IsWindowsVersionOrGreater(10, 0, 18362)) { // normal dark mode was arrived to Windows since Windows 10 October 2018 update
     if (lRes == ERROR_SUCCESS) {
@@ -68,30 +77,17 @@ static bool GetMenuBarRect(HWND hwnd, RECT& rc) {
 
     return true;
 }
-void PaintMenuBar(HWND hwnd) {
-    RECT rc;
-    if (!GetMenuBarRect(hwnd, rc))
-        return;
-
-        HDC hdc = GetWindowDC(hwnd);
-        HBRUSH brush = CreateSolidBrush(RGB(0, 255, 255)); // CYAN
-
-        FillRect(hdc, &rc, brush);
-
-        DeleteObject(brush);
-        ReleaseDC(hwnd, hdc);
-}
 
 int UIRefresh(HWND hWnd, LPARAM lParam, WPARAM wParam, int code) {
-    // interface
     if (DimCoreIsDark()) {
         if (code == 0) {
             BOOL darkTheme = TRUE;
             engine.Set(L"darkTheme", darkTheme ? true : false);
 
-            DwmSetWindowAttribute(hWnd, 19, &darkTheme, sizeof(darkTheme)); // Windows 10 older builds
-            DwmSetWindowAttribute(hWnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &darkTheme, sizeof(darkTheme));
-            // SetClassLongPtr(hWnd, GCLP_HBRBACKGROUND, (LONG_PTR)CreateSolidBrush(RGB(32, 32, 32)));
+            HRESULT result = DwmSetWindowAttribute(hWnd, 20, &darkTheme, sizeof(darkTheme));
+            if (!SUCCEEDED(result)) {
+                DwmSetWindowAttribute(hWnd, 19, &darkTheme, sizeof(darkTheme));
+            }
             SetWindowPos(hWnd, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
             RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
 

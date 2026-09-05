@@ -12,8 +12,40 @@
 
 Engine::Engine(HWND hWnd) {
 	this->hWnd = hWnd;
+
+	// Initialize GDI+
 	GdiplusStartupInput gdiplusstartupinput;
 	GdiplusStartup(&this->gdiplustoken, &gdiplusstartupinput, NULL);
+
+	// Initialize Direct2d
+	HRESULT result = S_OK;
+	result = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &this->factory);
+	if (!SUCCEEDED(result)) {
+		MessageBox(this->hWnd, TEXT("Cannot initialize factory"), TEXT("DimEngine"), MB_ICONERROR | MB_OK);
+		exit(1);
+	}
+
+	D2D1_RENDER_TARGET_PROPERTIES properties = D2D1::RenderTargetProperties(
+		D2D1_RENDER_TARGET_TYPE_DEFAULT, // To-Do: understand Software vs Hardware stuff
+		D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE),
+		0.0f, 0.0f,
+		D2D1_RENDER_TARGET_USAGE_GDI_COMPATIBLE,
+		D2D1_FEATURE_LEVEL_DEFAULT
+	);
+	result = this->factory->CreateDCRenderTarget(&properties, &this->target);
+	if (SUCCEEDED(result)) {
+		RECT rc; GetClientRect(this->hWnd, &rc);
+		result = this->target->BindDC(GetDC(hWnd), &rc);
+		if (!SUCCEEDED(result)) {
+			MessageBox(this->hWnd, TEXT("Cannot bind the device context"), TEXT("DimEngine"), MB_ICONERROR | MB_OK);
+			exit(1);
+		}
+	} else {
+		wchar_t msg[256];
+		swprintf_s(msg, L"Cannot create render target\nReason: 0x % 08X", static_cast<unsigned int>(result));
+		MessageBoxW(this->hWnd, msg, L"DimEngine", MB_ICONERROR | MB_OK);
+		exit(1);
+	}
 }
 Engine::Engine() {
 	this->hWnd = NULL;
@@ -27,6 +59,8 @@ Engine::~Engine() {
 	if (this->hWnd) {
 		this->hWnd = NULL;
 	}
+	if (this->factory) this->factory = NULL;
+	if (this->target) this->target = NULL;
 }
 
 // Basics
@@ -105,7 +139,7 @@ int Engine::OptionInt(Shape shape, wstring name, int byDefault) {
 
 // Frames
 void Engine::Play() {
-	unsigned int fps = this->GetAs<unsigned int>(L"fps", 15);
+	unsigned int fps = this->GetAs<unsigned int>(L"fps", 12);
 	SetTimer(this->hWnd, 1, 1000 / fps, NULL);
 	this->isPlaying = true;
 }
@@ -201,6 +235,11 @@ void Engine::Draw(__out_opt Bitmap *target) {
 				);
 				SolidBrush brush(color);
 				Pen pen(color, (REAL)this->OptionInt(shape, L"size"));
+				Pen selectPen(Color(0, 0, 255), 1.0f);
+
+				if (shape.selected) {
+					graphics->DrawRectangle(&selectPen, x - 5, y - 5, width + 10, height + 10);
+				}
 
 				switch (shape.type) {
 					case SHAPE_RECTANGLE:
@@ -213,8 +252,7 @@ void Engine::Draw(__out_opt Bitmap *target) {
 						graphics->DrawLine(&pen, x, y, this->OptionInt(shape, L"x2") + canvasX, this->OptionInt(shape, L"y2") + canvasY);
 						break;
 					case SHAPE_TEXT: {
-						wstring fontName = this->Option(shape, L"font");
-						wstring contentPre = this->Option(shape, L"content");
+						wstring fontName = this->Option(shape, L"font"), contentPre = this->Option(shape, L"content");
 						int size = this->OptionInt(shape, L"fontSize", 16);
 						if (fontName == L"") fontName = L"Arial";
 						if (contentPre == L"") throw 3;
@@ -232,18 +270,21 @@ void Engine::Draw(__out_opt Bitmap *target) {
 							wstring xi = L"x" + to_wstring(j), yi = L"y" + to_wstring(j), opt = this->Option(shape, xi);
 							if (opt == L"") break;
 
-							float x2 = (float)(this->OptionInt(shape, xi) + canvasX),
-								  y2 = (float)(this->OptionInt(shape, yi) + canvasY);
-							wstring cx = this->Option(shape, L"cx" + to_wstring(j)),
-									cy = this->Option(shape, L"cy" + to_wstring(j));
+							float x2 = (float)(this->OptionInt(shape, xi) + canvasX), y2 = (float)(this->OptionInt(shape, yi) + canvasY);
+							wstring cx = this->Option(shape, L"cx" + to_wstring(j)), prevCx = this->Option(shape, L"cx" + to_wstring(j - 1));
 
 							if (j == 1) { // first point
 								prevX = x2; prevY = y2;
 							} else if (cx != L"") { // bezier — needs previous control point too
-								float cx1 = (float)(this->OptionInt(shape, L"cx" + to_wstring(j - 1)) + canvasX);
-								float cy1 = (float)(this->OptionInt(shape, L"cy" + to_wstring(j - 1)) + canvasY);
-								float cx2 = (float)(this->OptionInt(shape, L"cx" + to_wstring(j)) + canvasX);
-								float cy2 = (float)(this->OptionInt(shape, L"cy" + to_wstring(j)) + canvasY);
+								float cx1 = (prevCx != L"")
+									? (float)(this->OptionInt(shape, L"cx" + to_wstring(j - 1)) + canvasX)
+									: prevX;
+								float cy1 = (prevCx != L"")
+									? (float)(this->OptionInt(shape, L"cy" + to_wstring(j - 1)) + canvasY)
+									: prevY;
+								float hx = (float)(this->OptionInt(shape, L"cx" + to_wstring(j)) + canvasX);
+								float hy = (float)(this->OptionInt(shape, L"cy" + to_wstring(j)) + canvasY);
+								float cx2 = 2 * x2 - hx, cy2 = 2 * y2 - hy;
 								path.AddBezier(prevX, prevY, cx1, cy1, cx2, cy2, x2, y2);
 								prevX = x2; prevY = y2;
 							} else { // straight line
@@ -267,6 +308,65 @@ void Engine::Draw(__out_opt Bitmap *target) {
 
 		EndPaint(this->hWnd, &ps);
 	}
+}
+
+bool Engine::HitTest(Shape shape, int px, int py) {
+	int tol = max(this->OptionInt(shape, L"size", 1) / 2 + 4, 4);
+
+	auto distToSeg = [](float px, float py, float ax, float ay, float bx, float by) -> float {
+		float dx = bx - ax, dy = by - ay;
+		float len2 = dx * dx + dy * dy;
+		float t = (len2 > 0) ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0.0f;
+		t = max(0.0f, min(1.0f, t));
+		float cx = ax + t * dx, cy = ay + t * dy;
+		float ex = px - cx, ey = py - cy;
+		return sqrtf(ex * ex + ey * ey);
+	};
+
+	switch (shape.type) {
+		case SHAPE_RECTANGLE: {
+			int x = this->OptionInt(shape, L"x"), y = this->OptionInt(shape, L"y");
+			int w = this->OptionInt(shape, L"width"), h = this->OptionInt(shape, L"height");
+			return px >= x && px <= x + w && py >= y && py <= y + h;
+		}
+		case SHAPE_ELLIPSE: {
+			int x = this->OptionInt(shape, L"x"), y = this->OptionInt(shape, L"y");
+			int w = this->OptionInt(shape, L"width"), h = this->OptionInt(shape, L"height");
+			if (w <= 0 || h <= 0) return false;
+			float rx = w / 2.0f, ry = h / 2.0f;
+			float cx = x + rx, cy = y + ry;
+			float nx = (px - cx) / rx, ny = (py - cy) / ry;
+			return nx * nx + ny * ny <= 1.0f;
+		}
+		case SHAPE_LINE: {
+			float ax = (float)this->OptionInt(shape, L"x"), ay = (float)this->OptionInt(shape, L"y");
+			float bx = (float)this->OptionInt(shape, L"x2"), by = (float)this->OptionInt(shape, L"y2");
+			return distToSeg((float)px, (float)py, ax, ay, bx, by) <= tol;
+		}
+		case SHAPE_TEXT: {
+			int x = this->OptionInt(shape, L"x"), y = this->OptionInt(shape, L"y");
+			int size = this->OptionInt(shape, L"fontSize", 16);
+			wstring content = this->Option(shape, L"content");
+			int w = (int)content.size() * size / 2 + size;  // rough estimate
+			int h = size;
+			return px >= x && px <= x + w && py >= y - h && py <= y;
+		}
+		case SHAPE_PATH: {
+			int j = 1; float prevX = 0, prevY = 0;
+			while (true) {
+				wstring xi = L"x" + to_wstring(j);
+				if (this->Option(shape, xi) == L"") break;
+				float x2 = (float)this->OptionInt(shape, xi);
+				float y2 = (float)this->OptionInt(shape, L"y" + to_wstring(j));
+				if (j > 1 && distToSeg((float)px, (float)py, prevX, prevY, x2, y2) <= tol)
+					return true;
+				prevX = x2; prevY = y2;
+				j++;
+			}
+			return false;
+		}
+	}
+	return false;
 }
 
 // Lexer
@@ -373,9 +473,11 @@ wstring Engine::Cast() {
 	// Scene
 	if (this->options.find(L"width") == this->options.end()) this->options[L"width"] = 800;
 	if (this->options.find(L"height") == this->options.end()) this->options[L"height"] = 600;
+	if (this->options.find(L"fps") == this->options.end()) this->options[L"fps"] = 12;
 
 	codeStream << "scene {\r\n";
 	for (auto op = this->options.begin(); op != this->options.end(); ++op) {
+		// To-Do: program-specific options should be masked under different way
 		if (op->first == L"darkTheme" || op->first == L"frameLoop") continue;
 
 		auto next_op = next(op);
@@ -387,8 +489,7 @@ wstring Engine::Cast() {
 		codeStream << "\t" << op->first << "=";
 		try {
 			codeStream << any_cast<int>(op->second);
-		}
-		catch (...) {
+		} catch (...) {
 			try {
 				codeStream << any_cast<wstring>(op->second);
 			}
