@@ -15,6 +15,8 @@ extern Engine engine;
 extern Cursor cursor;
 extern map<int, wchar_t> flags;
 extern map<wstring, any> options;
+extern vector<LoggedAction> loggedActions;
+extern unsigned int currentAction;
 
 bool DimCoreIsDark() {
     HKEY hKey;
@@ -82,7 +84,6 @@ int UIRefresh(HWND hWnd, LPARAM lParam, WPARAM wParam, int code) {
     if (DimCoreIsDark()) {
         if (code == 0) {
             BOOL darkTheme = TRUE;
-            engine.Set(L"darkTheme", darkTheme ? true : false);
 
             HRESULT result = DwmSetWindowAttribute(hWnd, 20, &darkTheme, sizeof(darkTheme));
             if (!SUCCEEDED(result)) {
@@ -149,4 +150,116 @@ COLORREF ShowColorDialog(HWND hwnd) { // backported exactly as on Astgh :3
     cc.Flags = CC_FULLOPEN | CC_RGBINIT;
     ChooseColor(&cc);
     return cc.rgbResult;
+}
+
+void UpdateMenu() {
+    HMENU hMenu = GetMenu(hwnd);
+    if (!hMenu)
+        return;
+
+    bool hasShapes = false, hasSelectedShapes = false;
+    if (!engine.frames.empty() && engine.currentFrame >= 0 && engine.currentFrame < (int)engine.frames.size()) {
+        auto& shapes = engine.frames[engine.currentFrame].shapes;
+        hasShapes = !shapes.empty();
+        for (const auto& shape : shapes) {
+            if (shape.selected) {
+                hasSelectedShapes = true;
+                break;
+            }
+        }
+    }
+
+    EnableMenuItem(hMenu, ID_ACTION_UNDO, MF_BYCOMMAND | (currentAction > 0 ? MF_ENABLED : MF_GRAYED));
+    EnableMenuItem(hMenu, ID_ACTION_REDO, MF_BYCOMMAND | (currentAction < (unsigned int)loggedActions.size() ? MF_ENABLED : MF_GRAYED));
+    EnableMenuItem(hMenu, ID_SHAPE_SELECT_ALL, MF_BYCOMMAND | (hasShapes ? MF_ENABLED : MF_GRAYED));
+    EnableMenuItem(hMenu, ID_SHAPE_DELETE, MF_BYCOMMAND | (hasSelectedShapes ? MF_ENABLED : MF_GRAYED));
+    DrawMenuBar(hwnd);
+}
+
+void ActionUpdate(int type, LoggedAction action = {}) {
+    switch (type) {
+        case 0:
+        case 1: { // undo & redo
+            if (loggedActions.empty()) break;
+
+            if (type == 0) {
+                if (currentAction == 0) break;
+                currentAction--;
+            } else {
+                if (currentAction >= (unsigned int)loggedActions.size()) break;
+            }
+
+            LoggedAction& a = loggedActions[currentAction];
+            switch (a.type) {
+                case ID_TIMELINE_NEW:
+                case ID_TIMELINE_DUPLICATE: {
+                    if (type == 0) {
+                        engine.DeleteFrame((int)engine.frames.size() - 1);
+                        engine.currentFrame = max(0, (int)engine.frames.size() - 1);
+                    } else {
+                        Frame fr; fr.shapes = a.shapes;
+                        engine.CreateFrame(fr);
+                        engine.currentFrame = (int)engine.frames.size() - 1;
+                    }
+                    break;
+                }
+                case ID_TIMELINE_DELETE: {
+                    if (type == 0) {
+                        Frame fr; fr.shapes = a.shapes;
+                        engine.frames.insert(engine.frames.begin() + a.frame, fr);
+                        engine.currentFrame = a.frame;
+                    } else {
+                        engine.DeleteFrame(a.frame);
+                        engine.currentFrame = max(0, (int)a.frame - 1);
+                    }
+                    break;
+                }
+                case ID_SHAPE_DELETE: {
+                    if (a.frame < (unsigned int)engine.frames.size()) {
+                        if (type == 0) {
+                            for (auto& s : a.shapes)
+                                engine.frames[a.frame].shapes.push_back(s);
+                        } else {
+                            auto& shapes = engine.frames[a.frame].shapes;
+                            for (int i = (int)shapes.size() - 1; i >= 0; i--) {
+                                for (auto& s : a.shapes) {
+                                    if (shapes[i].id == s.id) {
+                                        shapes.erase(shapes.begin() + i);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    break;
+                }
+                case 5000: {
+                    if (a.frame < (unsigned int)engine.frames.size()) {
+                        if (type == 0) {
+                            auto& shapes = engine.frames[a.frame].shapes;
+                            if (!shapes.empty()) shapes.pop_back();
+                        } else {
+                            for (auto& s : a.shapes)
+                                engine.frames[a.frame].shapes.push_back(s);
+                        }
+                    }
+                    break;
+                }
+            }
+
+            if (type == 1) currentAction++; // advance after redo
+
+            UpdateMenu();
+            break;
+        }
+        case 2: { // add
+            if (currentAction < (int)loggedActions.size())
+                loggedActions.erase(loggedActions.begin() + currentAction, loggedActions.end());
+            if (action.frame == 0 && action.type != ID_TIMELINE_NEW) // don't override explicit frame
+                action.frame = engine.currentFrame;
+            loggedActions.push_back(action);
+            currentAction = (int)loggedActions.size();
+            break;
+        }
+    }
 }

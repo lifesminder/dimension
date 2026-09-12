@@ -2,6 +2,9 @@
 // Microsoft Visual C++ generated include file.
 // Used by dimension.rc
 //
+#define DIM_VERSION_MAJOR               0
+#define DIM_VERSION_MINOR               1
+#define DIM_VERSION_REVISION            5
 #define IDD_DIMENSION_DIALOG            102
 #define IDS_APP_TITLE                   103
 #define IDD_ABOUTBOX                    103
@@ -13,16 +16,21 @@
 #define IDC_DIMENSION                   109
 #define IDR_MAINFRAME                   128
 #define IDD_EDITOR                      129
+#define IDD_EXPORTER                    130
 #define IDC_EDITOR                      1000
 #define IDC_DIM_TITLE                   1001
 #define IDC_DIM_COPYRIGHT               1002
+#define ID_EXPORT_STATUS                1004
 #define ID_TOOLBOX_CURSOR               2000
 #define ID_TOOLBOX_RECTANGLE            2001
 #define ID_TOOLBOX_ELLIPSE              2002
 #define ID_TOOLBOX_LINE                 2003
 #define ID_TOOLBOX_PATH                 2004
-#define ID_SHAPE_DELETE					3000
-#define ID_FLAG_ENGINEV2				9000
+#define ID_SHAPE_DELETE                 3000
+#define ID_SHAPE_SELECT_ALL             3001
+#define ID_ACTION_UNDO                  3002
+#define ID_ACTION_REDO                  3003
+#define ID_FLAG_ENGINEV2                9000
 #define IDM_NEW                         32771
 #define IDM_OPEN                        32772
 #define IDM_SAVE                        32773
@@ -39,10 +47,13 @@
 #define ID_BRUSH_COLOR                  32808
 #define ID_TIMELINE_NEW                 32811
 #define ID_TIMELINE_DUPLICATE           32812
-#define ID_TIMELINE_DELETE              32813
+#define ID_TIMELINE_EXTEND              32813
+#define ID_TIMELINE_DELETE              32814
 #define ID_TIMELINE_PLAY                32823
 #define ID_TIMELINE_STOP                32824
 #define ID_EXPORT_CURRENT               32829
+#define ID_EXPORT                       32830
+#define ID_HELP_WIKI                    32841
 #define IDC_STATIC                      -1
 
 // Next default values for new objects
@@ -50,9 +61,9 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        130
-#define _APS_NEXT_COMMAND_VALUE         32830
-#define _APS_NEXT_CONTROL_VALUE         1004
+#define _APS_NEXT_RESOURCE_VALUE        131
+#define _APS_NEXT_COMMAND_VALUE         32842
+#define _APS_NEXT_CONTROL_VALUE         1005
 #define _APS_NEXT_SYMED_VALUE           110
 #endif
 #endif

@@ -13,6 +13,7 @@
 #pragma comment(lib, "Gdiplus.lib")
 // Dimension EngineV2
 #include <d2d1.h>
+#include <d2d1_1.h>
 #include <d2d1helper.h>
 #include <dwrite.h>
 #include <wincodec.h>
@@ -60,8 +61,9 @@ typedef struct _Shape {
 } Shape;
 
 typedef struct {
-	unsigned int number;
+	unsigned int number, length;
 	vector<Shape> shapes;
+	ID2D1Bitmap* bitmap;
 } Frame;
 
 #ifdef cplusplus
@@ -73,9 +75,13 @@ class Engine {
 		HWND hWnd;
 		ID2D1Factory* factory = nullptr;
 		ID2D1DCRenderTarget* target = nullptr;
+		ID2D1BitmapRenderTarget* bitmapTarget = nullptr;
+		ID2D1Bitmap* bitmap = nullptr;
 		ULONG_PTR gdiplustoken;
+		map<wstring, any> options, parameters;
 
-		map<wstring, any> options;
+		// Primitives too
+		ID2D1SolidColorBrush* brush;
 
 		void Lex(__in LPWSTR code);
 		wstring Option(Shape shape, wstring name);
@@ -83,8 +89,8 @@ class Engine {
 
 	public:
 		vector<Frame> frames;
-		unsigned int currentFrame = 0;
-		bool isPlaying = false, isV2 = false;
+		unsigned int currentFrame = 0, frameTick = 0;
+		bool isPlaying = false, isV2 = false, isDarkTheme = false;
 
 		DIM_API Engine(HWND hWnd);
 		DIM_API Engine();

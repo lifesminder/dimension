@@ -19,7 +19,7 @@ Engine::Engine(HWND hWnd) {
 
 	// Initialize Direct2d
 	HRESULT result = S_OK;
-	result = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &this->factory);
+	result = D2D1CreateFactory(D2D1_FACTORY_TYPE_MULTI_THREADED, &this->factory);
 	if (!SUCCEEDED(result)) {
 		MessageBox(this->hWnd, TEXT("Cannot initialize factory"), TEXT("DimEngine"), MB_ICONERROR | MB_OK);
 		exit(1);
@@ -61,6 +61,8 @@ Engine::~Engine() {
 	}
 	if (this->factory) this->factory = NULL;
 	if (this->target) this->target = NULL;
+	if (this->bitmapTarget) this->bitmapTarget = NULL;
+	if (this->bitmap) this->bitmap = NULL;
 }
 
 // Basics
@@ -201,8 +203,7 @@ void Engine::Draw(__out_opt Bitmap *target) {
 		HGDIOBJ oldBitmap = SelectObject(memDC, memBitmap);
 
 		// Clear with GDI first
-		bool darkTheme = this->GetAs<bool>(L"darkTheme", false);
-		HBRUSH clearBrush = CreateSolidBrush(darkTheme ? RGB(43, 43, 43) : RGB(240, 240, 240));
+		HBRUSH clearBrush = CreateSolidBrush(this->isDarkTheme ? RGB(43, 43, 43) : RGB(240, 240, 240));
 		RECT fullRect = { 0, 0, clientWidth, clientHeight };
 		FillRect(memDC, &fullRect, clearBrush);
 		DeleteObject(clearBrush);
@@ -408,7 +409,24 @@ void Engine::Lex(__in LPWSTR code) {
 		token = Trim(token);
 		if (token.empty()) continue;
 
-		if (token == L"frame") {
+		if (token == L"shape") {
+			wstring block = ReadBlock(stream), line;
+			wistringstream blockStream(block);
+
+			while (getline(blockStream, line, L',')) {
+				line = Trim(line);
+				if (line.empty()) continue;
+				size_t eq = line.find(L'=');
+				if (eq == wstring::npos) continue;
+				wstring key = Trim(line.substr(0, eq)), value = Trim(line.substr(eq + 1));
+				try { this->Set(key, stoi(value)); }
+				catch (...) {
+					if (value == L"true") this->Set(key, true);
+					else if (value == L"false") this->Set(key, false);
+					else this->Set(key, value);
+				}
+			}
+		} else if (token == L"frame") {
 			Frame frame;
 			frame.number = (unsigned int)this->frames.size();
 			wstring block = ReadBlock(stream);
@@ -453,9 +471,7 @@ void Engine::Parse(__in LPWSTR code) {
 		this->Lex(code);
 		InvalidateRect(this->hWnd, NULL, TRUE);
 		UpdateWindow(this->hWnd);
-		// MessageBoxW(this->hWnd, code, TEXT("DimensionEngine v0"), MB_ICONINFORMATION | MB_OK);
-	}
-	catch (int error) {
+	} catch (int error) {
 		WCHAR message[MAX_PATH];
 		swprintf_s(message, L"Error: %d", error);
 		MessageBox(this->hWnd, message, TEXT("Engine"), MB_ICONERROR | MB_OK);

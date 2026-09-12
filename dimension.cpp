@@ -19,6 +19,7 @@ Cursor cursor;
 bool isSaved = false;
 wstring currentFile = L"", currentCode = L"";
 map<int, wchar_t> flags; map<wstring, any> options;
+vector<LoggedAction> loggedActions; unsigned int currentAction = (loggedActions.size() > 0) ? loggedActions.size() : 0;
 
 // Forward declarations of functions included in this code module
 void New();
@@ -26,6 +27,7 @@ void Open();
 void Save(bool force);
 void Export();
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+LRESULT CALLBACK ExportProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK Editor(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM);
 
@@ -80,7 +82,10 @@ wWinMain(
     );
     if (hwnd) {
         engine = Engine(hwnd);
+        engine.isV2 = true;
+        engine.isDarkTheme = DimCoreIsDark();
         UIRefresh(hwnd, 0, 0);
+        UpdateMenu();
     } else {
         return FALSE;
     }
@@ -149,7 +154,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         cursor.pathPoints.clear();
         cursor.points.clear();
         isSaved = false;
+
+        // Log the path creation
+        vector<Shape> shs; shs.push_back(sh);
+        ActionUpdate(2, { .type = 5000, .frame = (unsigned int)engine.currentFrame, .shape = 0, .shapes = shs });
+
         InvalidateRect(hwnd, NULL, FALSE);
+        UpdateMenu();
     };
 
     if (DimCoreIsDark() && UAHWndProc(hwnd, message, wParam, lParam, &lr)) {
@@ -176,7 +187,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                 case IDM_SAVEAS: Save(false); break;
                 case IDM_EDIT: DialogBox(hInst, MAKEINTRESOURCE(IDD_EDITOR), hWnd, Editor); break;
                 //// Export
-                case ID_EXPORT_CURRENT: Export(); break;
+                case ID_EXPORT: DialogBox(hInst, MAKEINTRESOURCE(IDD_EXPORTER), hWnd, ExportProc); break;
                 case IDM_EXIT: DestroyWindow(hWnd); break;
                 // Edit
                 //// Toolbox
@@ -193,6 +204,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                         case ID_TOOLBOX_PATH: cursor.tool = SHAPE_PATH; break;
                     }
                     CheckMenuRadioItem(GetMenu(hWnd), ID_TOOLBOX_CURSOR, ID_TOOLBOX_PATH, wmId, MF_BYCOMMAND);
+                    UpdateMenu();
                     break;
                 }
                 //// Timeline
@@ -204,6 +216,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                     engine.CreateFrame(Frame());
                     engine.currentFrame = (int)engine.frames.size() - 1; // go to newly created frame
                     InvalidateRect(hWnd, NULL, FALSE);
+                    ActionUpdate(2, { .type = ID_TIMELINE_NEW, .frame = engine.currentFrame });
+                    UpdateMenu();
+                    break;
+                }
+                case ID_TIMELINE_EXTEND: {
+                    engine.frames[engine.currentFrame].length++;
+                    InvalidateRect(hWnd, NULL, FALSE);
+                    ActionUpdate(2, { .type = ID_TIMELINE_EXTEND, .frame = engine.currentFrame });
+                    UpdateMenu();
                     break;
                 }
                 case ID_TIMELINE_DUPLICATE: {
@@ -212,10 +233,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                     engine.CreateFrame(copy);
                     engine.currentFrame = (int)engine.frames.size() - 1;
                     InvalidateRect(hWnd, NULL, FALSE);
+                    ActionUpdate(2, { .type = ID_TIMELINE_DUPLICATE, .frame = engine.currentFrame });
+                    UpdateMenu();
                     break;
                 }
                 case ID_TIMELINE_DELETE: {
                     if (engine.frames.empty()) break;
+                    Frame dying = engine.frames[engine.currentFrame]; // save before delete
+                    unsigned int deletedFrame = engine.currentFrame;
                     engine.DeleteFrame(engine.currentFrame);
                     if (engine.currentFrame >= (int)engine.frames.size())
                         engine.currentFrame = max(0, (int)engine.frames.size() - 1);
@@ -224,6 +249,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                         engine.currentFrame = 0;
                     }
                     InvalidateRect(hWnd, NULL, FALSE);
+                    ActionUpdate(2, { .type = ID_TIMELINE_DELETE, .frame = deletedFrame, .shape = 0, .shapes = dying.shapes });
+                    UpdateMenu();
                     break;
                 }
                 case ID_TIMELINE_LOOP: {
@@ -231,6 +258,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                     doFrameLoop = !doFrameLoop;
                     engine.Set(L"frameLoop", doFrameLoop);
                     CheckMenuItem(GetMenu(hWnd), ID_TIMELINE_LOOP, doFrameLoop ? MF_CHECKED : MF_UNCHECKED);
+                    UpdateMenu();
                     break;
                 }
                 //// Brush
@@ -239,24 +267,39 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                 case ID_BRUSH_RESET: cursor.size = 1; break;
                 case ID_BRUSH_COLOR: cursor.color = ShowColorDialog(hWnd); break;
                 //// Shape operations
-                case ID_SHAPE_DELETE: {
+                case ID_ACTION_UNDO: ActionUpdate(0, {}); break;
+                case ID_ACTION_REDO: ActionUpdate(1, {}); break;
+                case ID_SHAPE_SELECT_ALL: {
                     if (engine.frames.size() > 0) {
                         auto& shapes = engine.frames[engine.currentFrame].shapes;
                         if (shapes.size() > 0) {
                             for (int i = (int)shapes.size() - 1; i >= 0; i--) {
-                                if (shapes[i].selected) {
-                                    shapes.erase(shapes.begin() + i);
+                                if (!shapes[i].selected) {
+                                    shapes[i].selected = true;
                                 }
                             }
                             InvalidateRect(hWnd, NULL, FALSE);
+                            UpdateMenu();
                         }
                     }
                     break;
                 }
-                // Flags
-                case ID_FLAG_ENGINEV2: {
-                    engine.isV2 = !engine.isV2;
-                    CheckMenuItem(GetMenu(hWnd), ID_FLAG_ENGINEV2, engine.isV2 ? MF_CHECKED : MF_UNCHECKED);
+                case ID_SHAPE_DELETE: {
+                    if (engine.frames.size() > 0) {
+                        auto& shapes = engine.frames[engine.currentFrame].shapes;
+                        if (shapes.size() > 0) {
+                            vector<Shape> shs;
+                            for (int i = (int)shapes.size() - 1; i >= 0; i--) {
+                                if (shapes[i].selected) {
+                                    shs.push_back(shapes[i]);
+                                    shapes.erase(shapes.begin() + i);
+                                }
+                            }
+                            InvalidateRect(hWnd, NULL, FALSE);
+                            ActionUpdate(2, { .type = ID_SHAPE_DELETE, .frame = (unsigned int)engine.currentFrame, .shape = 0, .shapes = shs });
+                            UpdateMenu();
+                        }
+                    }
                     break;
                 }
                 // Help
@@ -277,8 +320,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             return 0;
         }
         case WM_TIMER: {
-            if (wParam == 1)
-                engine.NextFrame();
+            if (wParam == 1) {
+                static unsigned int ticksOnFrame = 0;
+                unsigned int length = 1;
+                if (!engine.frames.empty())
+                    length = max(1u, engine.frames[engine.currentFrame].length);
+
+                ticksOnFrame++;
+                if (ticksOnFrame >= length) {
+                    ticksOnFrame = 0;
+                    engine.NextFrame();
+                }
+            }
+            UpdateMenu();
             break;
         }
         case WM_LBUTTONDOWN: {
@@ -313,6 +367,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                 cursor.drawing = (cursor.tool != SHAPE_NONE);
             }
             InvalidateRect(hWnd, NULL, FALSE);
+            UpdateMenu();
             return 0;
         }
         case WM_MOUSEMOVE: {
@@ -323,6 +378,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                     cursor.dragging = true;
                 }
                 InvalidateRect(hWnd, NULL, FALSE);
+                UpdateMenu();
             }
             return 0;
         }
@@ -390,11 +446,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             currentCode = engine.Cast();
             isSaved = false;
             InvalidateRect(hWnd, NULL, FALSE);
+
+            vector<Shape> shs;
+            shs.push_back(sh);
+            ActionUpdate(2, { .type = 5000, .frame = (unsigned int)engine.currentFrame, .shape = 0, .shapes = shs });
+
+            UpdateMenu();
             return 0;
         }
         case WM_LBUTTONDBLCLK: {
             if (cursor.tool != SHAPE_PATH || !cursor.drawing) return 0;
             FinishPath();
+            UpdateMenu();
             return 0;
         }
         case WM_PAINT: {
@@ -507,6 +570,8 @@ void New() {
     currentCode = L"";
     engine.Clean();
     engine.Parse(currentCode.data());
+    loggedActions.clear();
+    currentAction = 0;
     isSaved = true;
 }
 void Open() {
@@ -644,7 +709,36 @@ INT_PTR CALLBACK Editor(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
     return (INT_PTR)FALSE;
 }
 
-// Message handler for about box.
+INT_PTR CALLBACK ExportProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+    UNREFERENCED_PARAMETER(lParam);
+
+    switch (message) {
+        case WM_CTLCOLORDLG:
+        case WM_CTLCOLORSTATIC:
+        case WM_CTLCOLORBTN: {
+            if (DimCoreIsDark())
+                return UIRefresh(hDlg, lParam, wParam, message);
+            return 0;
+        }
+        case WM_INITDIALOG: {
+            UIRefresh(hDlg, lParam, wParam);
+            return (INT_PTR)TRUE;
+        }
+        case WM_COMMAND: {
+            switch (LOWORD(wParam)) {
+                case ID_EXPORT_CURRENT: Export(); break;
+                case IDOK:
+                case IDCANCEL: {
+                    EndDialog(hDlg, LOWORD(wParam));
+                    return (INT_PTR)TRUE;
+                }
+            }
+            break;
+        }
+    }
+    return (INT_PTR)FALSE;
+}
+
 INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
     UNREFERENCED_PARAMETER(lParam);
     switch (message) {

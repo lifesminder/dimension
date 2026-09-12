@@ -12,7 +12,6 @@
 #define DIMENSION_H
 
 #include "targetver.h"
-#define WIN32_LEAN_AND_MEAN // Exclude rarely-used stuff from Windows headers
 // Windows Header Files
 #include <windows.h>
 #include <CommCtrl.h>
@@ -63,21 +62,12 @@
 using namespace std;
 using namespace Gdiplus;
 
-// Functionality
-bool DimCoreIsDark();
-void MakeMenuOwnerDraw(HMENU hMenu);
-void PaintMenuBar(HWND hwnd);
-int UIRefresh(HWND hWnd, LPARAM lParam = NULL, WPARAM wParam = NULL, int code = 0);
-void DrawDarkMenuBar(HWND hwnd, HDC hdc);
-COLORREF ShowColorDialog(HWND hwnd);
-
-// Inter-usable
-void CLI();
-
+// Inter-usable definitions
 typedef struct _PathPoint {
     POINT point = { 0, 0 }, controlPoint = { 0, 0 };
     bool smooth = false;
 } PathPoint;
+
 typedef struct _Cursor {
     COLORREF color = RGB(0, 0, 0);
     ShapeType tool = SHAPE_NONE;
@@ -87,6 +77,22 @@ typedef struct _Cursor {
     unsigned int size = 1;
     bool drawing = false, dragging = false;
 } Cursor;
+
+typedef struct {
+    unsigned int type, frame, shape; // <- those are IDs
+    vector<Shape> shapes;
+} LoggedAction;
+
+// Function prototypes (promises, as Norayr describes)
+void CLI();
+bool DimCoreIsDark();
+void MakeMenuOwnerDraw(HMENU hMenu);
+void PaintMenuBar(HWND hwnd);
+void UpdateMenu();
+void ActionUpdate(int type, LoggedAction action);
+int UIRefresh(HWND hWnd, LPARAM lParam = NULL, WPARAM wParam = NULL, int code = 0);
+void DrawDarkMenuBar(HWND hwnd, HDC hdc);
+COLORREF ShowColorDialog(HWND hwnd);
 
 // Shell Manifest
 #if defined _M_IX86
