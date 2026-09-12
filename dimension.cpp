@@ -304,6 +304,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                 }
                 // Help
                 case IDM_ABOUT: DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About); break;
+                case ID_HELP_WIKI: ShellExecuteW(NULL, TEXT("open"), TEXT("http://git.lmd.vg/ash/dimension/wiki/Welcome"), NULL, NULL, SW_SHOW); break;
+                case ID_HELP_CHANGELOG: ShellExecuteW(NULL, TEXT("open"), TEXT("http://git.lmd.vg/ash/dimension/src/branch/master/CHANGELOG.md"), NULL, NULL, SW_SHOW); break;
                 default: return DefWindowProc(hWnd, message, wParam, lParam);
             }
             break;
