@@ -17,6 +17,7 @@ extern map<int, wchar_t> flags;
 extern map<wstring, any> options;
 extern vector<LoggedAction> loggedActions;
 extern unsigned int currentAction;
+extern wstring currentCode;
 
 bool DimCoreIsDark() {
     HKEY hKey;
@@ -203,14 +204,29 @@ void ActionUpdate(int type, LoggedAction action = {}) {
                     }
                     break;
                 }
+                case ID_TIMELINE_EXTEND: {
+                    if (a.frame < (unsigned int)engine.frames.size()) {
+                        auto& len = engine.frames[a.frame].length;
+                        if (type == 0) {
+                            if (len > 1)
+                                len--;
+                        } else {
+                            len++;
+                        }
+                        engine.currentFrame = a.frame;
+                    }
+                    break;
+                }
                 case ID_TIMELINE_DELETE: {
                     if (type == 0) {
                         Frame fr; fr.shapes = a.shapes;
-                        engine.frames.insert(engine.frames.begin() + a.frame, fr);
-                        engine.currentFrame = a.frame;
+                        size_t pos = min((size_t)a.frame, engine.frames.size());
+                        engine.frames.insert(engine.frames.begin() + pos, fr);
+                        engine.currentFrame = (int)pos;
                     } else {
                         engine.DeleteFrame(a.frame);
-                        engine.currentFrame = max(0, (int)a.frame - 1);
+                        if (engine.frames.empty()) engine.CreateFrame(Frame());
+                        engine.currentFrame = min((int)a.frame, (int)engine.frames.size() - 1);
                     }
                     break;
                 }
@@ -248,6 +264,10 @@ void ActionUpdate(int type, LoggedAction action = {}) {
             }
 
             if (type == 1) currentAction++; // advance after redo
+            if (engine.currentFrame >= (int)engine.frames.size())
+                engine.currentFrame = max(0, (int)engine.frames.size() - 1);
+            currentCode = engine.Cast();
+            InvalidateRect(hwnd, NULL, FALSE);
 
             UpdateMenu();
             break;

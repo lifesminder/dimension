@@ -242,11 +242,17 @@ void Engine::Draw(__out_opt Bitmap *target) {
 					graphics->DrawRectangle(&selectPen, x - 5, y - 5, width + 10, height + 10);
 				}
 
+				SolidBrush fillBrush(Color(
+					this->OptionInt(shape, L"br"), this->OptionInt(shape, L"bg"), this->OptionInt(shape, L"bb")));
+				bool fill = this->Option(shape, L"fill") == L"1";
+
 				switch (shape.type) {
 					case SHAPE_RECTANGLE:
+						if (fill) graphics->FillRectangle(&fillBrush, x, y, width, height);
 						graphics->DrawRectangle(&pen, x, y, width, height);
 						break;
 					case SHAPE_ELLIPSE:
+						if (fill) graphics->FillEllipse(&fillBrush, x, y, width, height);
 						graphics->DrawEllipse(&pen, x, y, width, height);
 						break;
 					case SHAPE_LINE:
@@ -294,6 +300,7 @@ void Engine::Draw(__out_opt Bitmap *target) {
 							}
 							j++;
 						}
+						if (fill) graphics->FillPath(&fillBrush, &path);
 						graphics->DrawPath(&pen, &path);
 						break;
 					}

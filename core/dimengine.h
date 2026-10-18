@@ -63,7 +63,7 @@ typedef struct _Shape {
 typedef struct {
 	unsigned int number, length;
 	vector<Shape> shapes;
-	ID2D1Bitmap* bitmap;
+	ID2D1Bitmap* bitmap = nullptr;
 } Frame;
 
 #ifdef cplusplus
@@ -81,7 +81,7 @@ class Engine {
 		map<wstring, any> options, parameters;
 
 		// Primitives too
-		ID2D1SolidColorBrush* brush;
+		ID2D1SolidColorBrush *brush = nullptr, *backBrush = nullptr;
 
 		void Lex(__in LPWSTR code);
 		wstring Option(Shape shape, wstring name);
@@ -132,6 +132,7 @@ class Engine {
 		DIM_API void Clean();
 		DIM_API wstring Cast();
 		DIM_API void Export(wstring path, int frame = -1);
+		DIM_API bool ExportVideo(wstring path); // H.264 MP4
 };
 
 wstring Trim(const wstring& s);

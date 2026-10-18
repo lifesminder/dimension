@@ -17,6 +17,7 @@
 #define IDR_MAINFRAME                   128
 #define IDD_EDITOR                      129
 #define IDD_EXPORTER                    130
+#define IDD_COLORS                      133
 #define IDC_EDITOR                      1000
 #define IDC_DIM_TITLE                   1001
 #define IDC_DIM_COPYRIGHT               1002
@@ -30,6 +31,9 @@
 #define ID_SHAPE_SELECT_ALL             3001
 #define ID_ACTION_UNDO                  3002
 #define ID_ACTION_REDO                  3003
+#define ID_EDIT_COLORS_CHANGE           4000
+#define ID_EDIT_COLORS_CHANGE_BACK      4001
+#define ID_EDIT_COLOR_ISBACKGROUND      4002
 #define ID_FLAG_ENGINEV2                9000
 #define IDM_NEW                         32771
 #define IDM_OPEN                        32772
@@ -44,7 +48,7 @@
 #define ID_BRUSH_INCREASE               32801
 #define ID_BRUSH_DECREASE               32802
 #define ID_BRUSH_RESET                  32803
-#define ID_BRUSH_COLOR                  32808
+#define ID_BRUSH_COLORS                 32808
 #define ID_TIMELINE_NEW                 32811
 #define ID_TIMELINE_DUPLICATE           32812
 #define ID_TIMELINE_EXTEND              32813
@@ -53,6 +57,7 @@
 #define ID_TIMELINE_STOP                32824
 #define ID_EXPORT_CURRENT               32829
 #define ID_EXPORT                       32830
+#define ID_EXPORT_VIDEO                 32843
 #define ID_HELP_WIKI                    32841
 #define ID_HELP_CHANGELOG               32842
 #define IDC_STATIC                      -1
@@ -63,7 +68,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        131
-#define _APS_NEXT_COMMAND_VALUE         32843
+#define _APS_NEXT_COMMAND_VALUE         32844
 #define _APS_NEXT_CONTROL_VALUE         1005
 #define _APS_NEXT_SYMED_VALUE           110
 #endif

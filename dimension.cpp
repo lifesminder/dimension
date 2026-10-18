@@ -26,10 +26,12 @@ void New();
 void Open();
 void Save(bool force);
 void Export();
+void ExportVideo();
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 LRESULT CALLBACK ExportProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK Editor(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK ColorsProcess(HWND, UINT, WPARAM, LPARAM);
 
 int
 APIENTRY
@@ -143,10 +145,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                 sh.options[L"cy" + to_wstring(i + 1)] = to_wstring(cursor.pathPoints[i].controlPoint.y - cy);
             }
         }
-        sh.options[L"r"] = to_wstring(GetRValue(cursor.color));
-        sh.options[L"g"] = to_wstring(GetGValue(cursor.color));
-        sh.options[L"b"] = to_wstring(GetBValue(cursor.color));
+        sh.options[L"r"] = to_wstring(GetRValue(cursor.foreground));
+        sh.options[L"g"] = to_wstring(GetGValue(cursor.foreground));
+        sh.options[L"b"] = to_wstring(GetBValue(cursor.foreground));
         sh.options[L"size"] = to_wstring(cursor.size);
+        if (cursor.useBackground) {
+            sh.options[L"fill"] = wstring(L"1");
+            sh.options[L"br"] = to_wstring(GetRValue(cursor.background));
+            sh.options[L"bg"] = to_wstring(GetGValue(cursor.background));
+            sh.options[L"bb"] = to_wstring(GetBValue(cursor.background));
+        }
 
         if (engine.frames.empty()) engine.CreateFrame(Frame());
         engine.CreateShape(sh);
@@ -233,7 +241,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                     engine.CreateFrame(copy);
                     engine.currentFrame = (int)engine.frames.size() - 1;
                     InvalidateRect(hWnd, NULL, FALSE);
-                    ActionUpdate(2, { .type = ID_TIMELINE_DUPLICATE, .frame = engine.currentFrame });
+                    ActionUpdate(2, { .type = ID_TIMELINE_DUPLICATE, .frame = (unsigned int)engine.currentFrame, .shape = 0, .shapes = copy.shapes });
                     UpdateMenu();
                     break;
                 }
@@ -265,7 +273,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                 case ID_BRUSH_INCREASE: cursor.size += 1; break;
                 case ID_BRUSH_DECREASE: cursor.size = (cursor.size > 1) ? --cursor.size : 1; break;
                 case ID_BRUSH_RESET: cursor.size = 1; break;
-                case ID_BRUSH_COLOR: cursor.color = ShowColorDialog(hWnd); break;
+                case ID_BRUSH_COLORS: DialogBox(hInst, MAKEINTRESOURCE(IDD_COLORS), hWnd, ColorsProcess); break;
                 //// Shape operations
                 case ID_ACTION_UNDO: ActionUpdate(0, {}); break;
                 case ID_ACTION_REDO: ActionUpdate(1, {}); break;
@@ -433,10 +441,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             }
 
             // Remaining parameters, fetched from our cursor
-            sh.options[L"r"] = to_wstring(GetRValue(cursor.color));
-            sh.options[L"g"] = to_wstring(GetGValue(cursor.color));
-            sh.options[L"b"] = to_wstring(GetBValue(cursor.color));
+            sh.options[L"r"] = to_wstring(GetRValue(cursor.foreground));
+            sh.options[L"g"] = to_wstring(GetGValue(cursor.foreground));
+            sh.options[L"b"] = to_wstring(GetBValue(cursor.foreground));
             sh.options[L"size"] = to_wstring(cursor.size);
+            if (cursor.useBackground) {
+                sh.options[L"fill"] = wstring(L"1");
+                sh.options[L"br"] = to_wstring(GetRValue(cursor.background));
+                sh.options[L"bg"] = to_wstring(GetGValue(cursor.background));
+                sh.options[L"bb"] = to_wstring(GetBValue(cursor.background));
+            }
 
             // If there's no any frame, attach one like in Adobe Animate (Flash)
             if (engine.frames.empty()) {
@@ -655,6 +669,25 @@ void Export() {
     }
 }
 
+void ExportVideo() {
+    OPENFILENAMEW ofn;
+    WCHAR szFileName[MAX_PATH] = L"";
+    ZeroMemory(&ofn, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hwnd;
+    ofn.lpstrFilter = L"MP4 Video\0*.mp4\0";
+    ofn.lpstrFile = szFileName;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrTitle = L"Export video";
+    ofn.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT;
+    ofn.lpstrDefExt = L"mp4";
+
+    if (GetSaveFileNameW(&ofn)) {
+        engine.ExportVideo(wstring(szFileName));
+        InvalidateRect(hwnd, NULL, TRUE);
+    }
+}
+
 // Message handler for the editor
 INT_PTR CALLBACK Editor(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
     UNREFERENCED_PARAMETER(lParam);
@@ -729,7 +762,63 @@ INT_PTR CALLBACK ExportProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
         case WM_COMMAND: {
             switch (LOWORD(wParam)) {
                 case ID_EXPORT_CURRENT: Export(); break;
+                case ID_EXPORT_VIDEO: ExportVideo(); break;
                 case IDOK:
+                case IDCANCEL: {
+                    EndDialog(hDlg, LOWORD(wParam));
+                    return (INT_PTR)TRUE;
+                }
+            }
+            break;
+        }
+    }
+    return (INT_PTR)FALSE;
+}
+
+INT_PTR CALLBACK ColorsProcess(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+    UNREFERENCED_PARAMETER(lParam);
+    static COLORREF colorForeground, colorBackground;
+    static bool useBackground;
+
+    switch (message) {
+        case WM_CTLCOLORDLG:
+        case WM_CTLCOLORSTATIC:
+        case WM_CTLCOLORBTN: {
+            if (DimCoreIsDark())
+                return UIRefresh(hDlg, lParam, wParam, message);
+            return 0;
+        }
+        case WM_INITDIALOG: {
+            UIRefresh(hDlg, lParam, wParam);
+            colorForeground = cursor.foreground;
+            colorBackground = cursor.background;
+            useBackground = cursor.useBackground;
+            CheckDlgButton(hDlg, ID_EDIT_COLOR_ISBACKGROUND, useBackground ? BST_CHECKED : BST_UNCHECKED);
+            EnableWindow(GetDlgItem(hDlg, ID_EDIT_COLORS_CHANGE_BACK), useBackground);
+            return (INT_PTR)TRUE;
+        }
+        case WM_COMMAND: {
+            switch (LOWORD(wParam)) {
+                case ID_EDIT_COLORS_CHANGE: {
+                    colorForeground = ShowColorDialog(hDlg);
+                    break;
+                }
+                case ID_EDIT_COLORS_CHANGE_BACK: {
+                    colorBackground = ShowColorDialog(hDlg);
+                    break;
+                }
+                case ID_EDIT_COLOR_ISBACKGROUND: {
+                    useBackground = IsDlgButtonChecked(hDlg, ID_EDIT_COLOR_ISBACKGROUND) == BST_CHECKED;
+                    EnableWindow(GetDlgItem(hDlg, ID_EDIT_COLORS_CHANGE_BACK), useBackground);
+                    break;
+                }
+                case IDOK: {
+                    cursor.foreground = colorForeground;
+                    cursor.background = colorBackground;
+                    cursor.useBackground = useBackground;
+                    EndDialog(hDlg, LOWORD(wParam));
+                    return (INT_PTR)TRUE;
+                }
                 case IDCANCEL: {
                     EndDialog(hDlg, LOWORD(wParam));
                     return (INT_PTR)TRUE;

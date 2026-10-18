@@ -99,7 +99,8 @@ wstring Engine::Interpret() {
 }
 
 void Engine::DrawV2(HDC hdc) {
-	bool targeted = (this->target != nullptr);
+	if (this->target == nullptr)
+		return;
 
 	RECT rc; GetClientRect(hWnd, &rc);
 	HRESULT hr = this->target->BindDC(hdc, &rc);
@@ -115,12 +116,21 @@ void Engine::DrawV2(HDC hdc) {
 	D2D1_SIZE_F desiredSize = D2D1::SizeF(static_cast<float>(clientWidth), static_cast<float>(clientHeight));
 
 	// Create stuff
+	if (this->bitmap) { this->bitmap->Release(); this->bitmap = nullptr; }
+	if (this->bitmapTarget) { this->bitmapTarget->Release(); this->bitmapTarget = nullptr; }
+	if (this->brush) { this->brush->Release(); this->brush = nullptr; }
+	if (this->backBrush) { this->backBrush->Release(); this->backBrush = nullptr; }
+
 	HRESULT compatibleResult = this->target->CreateCompatibleRenderTarget(&this->bitmapTarget);
 	if (!SUCCEEDED(compatibleResult)) {
 		MessageBox(this->hWnd, TEXT("Error while creating compatible render target"), TEXT("Dimension"), MB_ICONERROR | MB_OK);
 		exit(1);
 	}
-	this->target->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black), &this->brush);
+	// Brushes must belong to the render target they draw on
+	bitmapTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black), &this->brush);
+	bitmapTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::White), &this->backBrush);
+	if (!this->brush || !this->backBrush)
+		return;
 
 	// Initialize the scene
 	bitmapTarget->BeginDraw();
@@ -141,7 +151,7 @@ void Engine::DrawV2(HDC hdc) {
 			Shape shape = frame.shapes[i];
 
 			int x = this->OptionInt(shape, L"x"), y = this->OptionInt(shape, L"y");
-			unsigned int width = this->OptionInt(shape, L"width"), height = this->OptionInt(shape, L"height");
+			int width = this->OptionInt(shape, L"width"), height = this->OptionInt(shape, L"height");
 
 			this->brush->SetColor(D2D1::ColorF(
 				this->OptionInt(shape, L"r", 255) / 255.0f,
@@ -149,11 +159,23 @@ void Engine::DrawV2(HDC hdc) {
 				this->OptionInt(shape, L"b", 255) / 255.0f,
 				this->OptionInt(shape, L"a", 255) / 255.0f
 			));
-			ID2D1SolidColorBrush* brush = this->brush;
+			ID2D1SolidColorBrush* brush = this->brush, *fillBrush = nullptr;
+			if (this->OptionInt(shape, L"fill") == 1) {
+				this->backBrush->SetColor(D2D1::ColorF(
+					this->OptionInt(shape, L"br", 255) / 255.0f,
+					this->OptionInt(shape, L"bg", 255) / 255.0f,
+					this->OptionInt(shape, L"bb", 255) / 255.0f,
+					this->OptionInt(shape, L"ba", 255) / 255.0f
+				));
+				fillBrush = this->backBrush;
+			}
 
 			switch (shape.type) {
 				case SHAPE_RECTANGLE: {
 					bitmapTarget->DrawRectangle(D2D1::RectF((float)x, (float)y, (float)(x + width), (float)(y + height)), brush, (float)this->OptionInt(shape, L"size"));
+					if (fillBrush != nullptr) {
+						bitmapTarget->FillRectangle(D2D1::RectF((float)x, (float)y, (float)(x + width), (float)(y + height)), fillBrush);
+					}
 					break;
 				}
 				case SHAPE_ELLIPSE: {
@@ -163,6 +185,9 @@ void Engine::DrawV2(HDC hdc) {
 						height / 2.0f
 					);
 					bitmapTarget->DrawEllipse(&ellipse, brush, (float)this->OptionInt(shape, L"size"));
+					if (fillBrush != nullptr) {
+						bitmapTarget->FillEllipse(&ellipse, fillBrush);
+					}
 					break;
 				}
 				case SHAPE_LINE: {
@@ -234,6 +259,9 @@ void Engine::DrawV2(HDC hdc) {
 					sink->Close();
 					sink->Release();
 					bitmapTarget->DrawGeometry(path, brush, (float)this->OptionInt(shape, L"size"));
+					if (fillBrush != nullptr) {
+						bitmapTarget->FillGeometry(path, fillBrush);
+					}
 					path->Release();
 					break;
 				}
@@ -250,6 +278,10 @@ void Engine::DrawV2(HDC hdc) {
 		hr = target->EndDraw();
 		if (hr == D2DERR_RECREATE_TARGET) {
 			// Target needs to be recreated.
+			if (this->bitmap) {
+				this->bitmap->Release();
+				this->bitmap = nullptr;
+			}
 		}
 	}
 }

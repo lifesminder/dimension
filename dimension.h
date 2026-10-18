@@ -69,7 +69,8 @@ typedef struct _PathPoint {
 } PathPoint;
 
 typedef struct _Cursor {
-    COLORREF color = RGB(0, 0, 0);
+    COLORREF color = RGB(0, 0, 0), foreground = RGB(0, 0, 0), background = RGB(255, 255, 255);
+    bool useBackground = false;
     ShapeType tool = SHAPE_NONE;
     POINT start = { 0, 0 }, now = { 0, 0 }, drag = { 0, 0 };
     vector<POINT> points; vector<PathPoint> pathPoints;
