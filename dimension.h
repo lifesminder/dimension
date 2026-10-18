@@ -95,6 +95,17 @@ int UIRefresh(HWND hWnd, LPARAM lParam = NULL, WPARAM wParam = NULL, int code = 
 void DrawDarkMenuBar(HWND hwnd, HDC hdc);
 COLORREF ShowColorDialog(HWND hwnd);
 
+void New();
+void Open();
+void Save(bool force);
+void Export();
+void ExportVideo();
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+LRESULT CALLBACK ExportProc(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK Editor(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK ColorsProcess(HWND, UINT, WPARAM, LPARAM);
+
 // Shell Manifest
 #if defined _M_IX86
 #pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='x86' publicKeyToken='6595b64144ccf1df' language='*'\"")
