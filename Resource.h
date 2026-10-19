@@ -2,9 +2,6 @@
 // Microsoft Visual C++ generated include file.
 // Used by dimension.rc
 //
-#define DIM_VERSION_MAJOR               0
-#define DIM_VERSION_MINOR               1
-#define DIM_VERSION_REVISION            5
 #define IDD_DIMENSION_DIALOG            102
 #define IDS_APP_TITLE                   103
 #define IDD_ABOUTBOX                    103
@@ -17,11 +14,17 @@
 #define IDR_MAINFRAME                   128
 #define IDD_EDITOR                      129
 #define IDD_EXPORTER                    130
+#define IDD_NEW                         132
 #define IDD_COLORS                      133
 #define IDC_EDITOR                      1000
 #define IDC_DIM_TITLE                   1001
 #define IDC_DIM_COPYRIGHT               1002
 #define ID_EXPORT_STATUS                1004
+#define IDC_NEW_NAME                    1017
+#define IDC_NEW_SIZE_W                  1018
+#define IDC_NEW_SIZE_H                  1019
+#define IDC_NEW_FPS_SPIN                1020
+#define IDC_NEW_FPS                     1021
 #define ID_TOOLBOX_CURSOR               2000
 #define ID_TOOLBOX_RECTANGLE            2001
 #define ID_TOOLBOX_ELLIPSE              2002

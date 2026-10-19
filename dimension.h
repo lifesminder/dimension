@@ -21,6 +21,8 @@
 #include <versionhelpers.h>
 #include <Richedit.h>
 #include <shellapi.h>
+#include <commctrl.h>
+#pragma comment(lib, "comctl32.lib")
 //// Windows 10 and later
 #include <dwmapi.h>
 #include <uxtheme.h>
@@ -104,6 +106,7 @@ LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 LRESULT CALLBACK ExportProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK Editor(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK NewProject(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK ColorsProcess(HWND, UINT, WPARAM, LPARAM);
 
 // Shell Manifest

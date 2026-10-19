@@ -10,6 +10,30 @@
 
 #include "theme.h"
 
+// MinGW-w64's uxtheme.h does not declare DrawThemeTextEx / DTTOPTS
+#ifndef DTT_TEXTCOLOR
+#define DTT_TEXTCOLOR (1UL << 0)
+typedef int (WINAPI* DTT_CALLBACK_PROC)(HDC, LPWSTR, int, LPRECT, UINT, LPARAM);
+typedef struct _DTTOPTS {
+    DWORD dwSize;
+    DWORD dwFlags;
+    COLORREF crText;
+    COLORREF crBorder;
+    COLORREF crShadow;
+    int iTextShadowType;
+    POINT ptShadowOffset;
+    int iBorderSize;
+    int iFontPropId;
+    int iColorPropId;
+    int iStateId;
+    BOOL fApplyOverlay;
+    int iGlowSize;
+    DTT_CALLBACK_PROC pfnDrawTextCallback;
+    LPARAM lParam;
+} DTTOPTS, *PDTTOPTS;
+extern "C" HRESULT WINAPI DrawThemeTextEx(HTHEME, HDC, int, int, LPCWSTR, int, DWORD, LPRECT, const DTTOPTS*);
+#endif
+
 static HBRUSH g_brTextColor = CreateSolidBrush(RGB(255, 255, 255));
 static HBRUSH g_brItemBackground = CreateSolidBrush(RGB(43, 43, 43));
 static HBRUSH g_brItemBackgroundHot = CreateSolidBrush(RGB(48, 48, 48));

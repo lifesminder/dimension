@@ -12,6 +12,7 @@
 
 // Global Variables
 Engine engine;
+Project project;
 HINSTANCE hInst; HWND hwnd;
 WCHAR szTitle[MAX_LOADSTRING], szWindowClass[MAX_LOADSTRING];
 // Program-specific variables
@@ -64,6 +65,11 @@ wWinMain(
 
     // Perform application initialization
     hInst = hInstance;
+
+    // Common controls: SysLink (About), up-down (New Project)
+    INITCOMMONCONTROLSEX icc = { sizeof(icc), ICC_LINK_CLASS | ICC_UPDOWN_CLASS | ICC_STANDARD_CLASSES };
+    InitCommonControlsEx(&icc);
+
     hwnd = CreateWindowW(
         szWindowClass, szTitle,
         WS_OVERLAPPEDWINDOW,
@@ -73,7 +79,9 @@ wWinMain(
     if (hwnd) {
         engine = Engine(hwnd);
         engine.isV2 = true;
+        engine.project = project;
         engine.isDarkTheme = DimCoreIsDark();
+
         UIRefresh(hwnd, 0, 0);
         UpdateMenu();
     } else {
@@ -144,7 +152,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             sh.options[L"bb"] = to_wstring(GetBValue(cursor.background));
         }
 
-        if (engine.frames.empty()) engine.CreateFrame(Frame());
+        if (engine.project.frames.empty()) engine.CreateFrame(Frame());
         engine.CreateShape(sh);
         currentCode = engine.Cast();
         cursor.pathPoints.clear();
@@ -210,37 +218,37 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                 case ID_TIMELINE_PREVIOUS: engine.PreviousFrame(); break;
                 case ID_TIMELINE_NEW: {
                     engine.CreateFrame(Frame());
-                    engine.currentFrame = (int)engine.frames.size() - 1; // go to newly created frame
+                    engine.currentFrame = (int)engine.project.frames.size() - 1; // go to newly created frame
                     InvalidateRect(hWnd, NULL, FALSE);
                     ActionUpdate(2, { .type = ID_TIMELINE_NEW, .frame = engine.currentFrame });
                     UpdateMenu();
                     break;
                 }
                 case ID_TIMELINE_EXTEND: {
-                    engine.frames[engine.currentFrame].length++;
+                    engine.project.frames[engine.currentFrame].length++;
                     InvalidateRect(hWnd, NULL, FALSE);
                     ActionUpdate(2, { .type = ID_TIMELINE_EXTEND, .frame = engine.currentFrame });
                     UpdateMenu();
                     break;
                 }
                 case ID_TIMELINE_DUPLICATE: {
-                    if (engine.frames.empty()) break;
-                    Frame copy = engine.frames[engine.currentFrame]; // duplicate current, not next
+                    if (engine.project.frames.empty()) break;
+                    Frame copy = engine.project.frames[engine.currentFrame]; // duplicate current, not next
                     engine.CreateFrame(copy);
-                    engine.currentFrame = (int)engine.frames.size() - 1;
+                    engine.currentFrame = (int)engine.project.frames.size() - 1;
                     InvalidateRect(hWnd, NULL, FALSE);
                     ActionUpdate(2, { .type = ID_TIMELINE_DUPLICATE, .frame = (unsigned int)engine.currentFrame, .shape = 0, .shapes = copy.shapes });
                     UpdateMenu();
                     break;
                 }
                 case ID_TIMELINE_DELETE: {
-                    if (engine.frames.empty()) break;
-                    Frame dying = engine.frames[engine.currentFrame]; // save before delete
+                    if (engine.project.frames.empty()) break;
+                    Frame dying = engine.project.frames[engine.currentFrame]; // save before delete
                     unsigned int deletedFrame = engine.currentFrame;
                     engine.DeleteFrame(engine.currentFrame);
-                    if (engine.currentFrame >= (int)engine.frames.size())
-                        engine.currentFrame = max(0, (int)engine.frames.size() - 1);
-                    if (engine.frames.empty()) {
+                    if (engine.currentFrame >= (int)engine.project.frames.size())
+                        engine.currentFrame = max(0, (int)engine.project.frames.size() - 1);
+                    if (engine.project.frames.empty()) {
                         engine.CreateFrame(Frame());
                         engine.currentFrame = 0;
                     }
@@ -266,8 +274,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                 case ID_ACTION_UNDO: ActionUpdate(0, {}); break;
                 case ID_ACTION_REDO: ActionUpdate(1, {}); break;
                 case ID_SHAPE_SELECT_ALL: {
-                    if (engine.frames.size() > 0) {
-                        auto& shapes = engine.frames[engine.currentFrame].shapes;
+                    if (engine.project.frames.size() > 0) {
+                        auto& shapes = engine.project.frames[engine.currentFrame].shapes;
                         if (shapes.size() > 0) {
                             for (int i = (int)shapes.size() - 1; i >= 0; i--) {
                                 if (!shapes[i].selected) {
@@ -281,8 +289,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                     break;
                 }
                 case ID_SHAPE_DELETE: {
-                    if (engine.frames.size() > 0) {
-                        auto& shapes = engine.frames[engine.currentFrame].shapes;
+                    if (engine.project.frames.size() > 0) {
+                        auto& shapes = engine.project.frames[engine.currentFrame].shapes;
                         if (shapes.size() > 0) {
                             vector<Shape> shs;
                             for (int i = (int)shapes.size() - 1; i >= 0; i--) {
@@ -321,8 +329,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             if (wParam == 1) {
                 static unsigned int ticksOnFrame = 0;
                 unsigned int length = 1;
-                if (!engine.frames.empty())
-                    length = max(1u, engine.frames[engine.currentFrame].length);
+                if (!engine.project.frames.empty())
+                    length = max(1u, engine.project.frames[engine.currentFrame].length);
 
                 ticksOnFrame++;
                 if (ticksOnFrame >= length) {
@@ -345,8 +353,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                 int cx = (rc.right - canvasW) / 2, cy = (rc.bottom - canvasH) / 2;
                 int px = cursor.start.x - cx, py = cursor.start.y - cy;
 
-                if (!engine.frames.empty()) {
-                    auto& shapes = engine.frames[engine.currentFrame].shapes;
+                if (!engine.project.frames.empty()) {
+                    auto& shapes = engine.project.frames[engine.currentFrame].shapes;
                     // single-select: clear first
                     for (auto& s : shapes)
                         s.selected = false;
@@ -441,7 +449,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             }
 
             // If there's no any frame, attach one like in Adobe Animate (Flash)
-            if (engine.frames.empty()) {
+            if (engine.project.frames.empty()) {
                 Frame frame;
                 engine.CreateFrame(frame);
             }

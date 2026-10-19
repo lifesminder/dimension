@@ -47,6 +47,9 @@
     <ClCompile Include="enginev2.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="project.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="core.rc">

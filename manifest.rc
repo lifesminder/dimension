@@ -1,0 +1,5 @@
+// Application manifest for the MinGW/LLVM builds.
+// Visual Studio embeds the same thing through #pragma comment(linker, ...),
+// which GCC and clang ignore; without it Common Controls v6 (SysLink,
+// themed dialogs) is not enabled.
+1 24 "dimension.manifest"

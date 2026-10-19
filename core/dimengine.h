@@ -44,6 +44,10 @@ using namespace Gdiplus;
 #define DIM_API __declspec(dllimport)
 #endif
 
+#ifdef cplusplus
+extern "C" {
+#endif
+
 typedef enum {
 	SHAPE_NONE,
 	SHAPE_RECTANGLE,
@@ -66,9 +70,18 @@ typedef struct {
 	ID2D1Bitmap* bitmap = nullptr;
 } Frame;
 
-#ifdef cplusplus
-extern "C" {
-#endif
+class Project {
+	public:
+		wstring name;
+		map<wstring, any> options;
+		vector<Frame> frames;
+
+		DIM_API Project();
+		DIM_API Project(wstring name, map<wstring, any> options);
+		DIM_API ~Project();
+
+		DIM_API bool IsInitialized();
+};
 
 class Engine {
 	private:
@@ -88,7 +101,7 @@ class Engine {
 		int OptionInt(Shape shape, wstring name, int byDefault = 0);
 
 	public:
-		vector<Frame> frames;
+		Project project;
 		unsigned int currentFrame = 0, frameTick = 0;
 		bool isPlaying = false, isV2 = false, isDarkTheme = false;
 
@@ -118,8 +131,8 @@ class Engine {
 		DIM_API any Get(wstring option, any fallback);
 		DIM_API void Set(wstring option, any value);
 		template<typename T> T GetAs(wstring name, T fallback) {
-			auto it = this->options.find(name);
-			if (it != this->options.end()) {
+			auto it = this->project.options.find(name);
+			if (it != this->project.options.end()) {
 				try { return any_cast<T>(it->second); }
 				catch (...) {}
 			}

@@ -51,7 +51,7 @@ wstring Engine::Interpret() {
 
 	// The beginnings of artwork
 	code += L"shape {\n";
-	for (auto op = this->options.begin(); op != this->options.end(); ++op) {
+	for (auto op = this->project.options.begin(); op != this->project.options.end(); ++op) {
 		code += L"\t" + op->first + L"=";
 		try {
 			code += to_wstring(any_cast<int>(op->second));
@@ -64,7 +64,7 @@ wstring Engine::Interpret() {
 				} catch (...) {}
 			}
 		}
-		if (next(op) != this->options.end()) {
+		if (next(op) != this->project.options.end()) {
 			code += L",";
 		}
 		code += L"\r\n";
@@ -72,9 +72,9 @@ wstring Engine::Interpret() {
 	code += L"}\n";
 
 	// Frames
-	if (this->frames.size() > 0) {
+	if (this->project.frames.size() > 0) {
 		code += L"\nframes {\n";
-		for (auto fr = this->frames.begin(); fr != this->frames.end(); ++fr) {
+		for (auto fr = this->project.frames.begin(); fr != this->project.frames.end(); ++fr) {
 			code += L"\t[";
 			auto& shapes = fr->shapes;
 			if (shapes.size() > 0) {
@@ -87,7 +87,7 @@ wstring Engine::Interpret() {
 				code += L"\t";
 			}
 			code += L"]";
-			if (next(fr) != this->frames.end()) {
+			if (next(fr) != this->project.frames.end()) {
 				code += L",";
 			}
 			code += L"\n";
@@ -116,11 +116,6 @@ void Engine::DrawV2(HDC hdc) {
 	D2D1_SIZE_F desiredSize = D2D1::SizeF(static_cast<float>(clientWidth), static_cast<float>(clientHeight));
 
 	// Create stuff
-	if (this->bitmap) { this->bitmap->Release(); this->bitmap = nullptr; }
-	if (this->bitmapTarget) { this->bitmapTarget->Release(); this->bitmapTarget = nullptr; }
-	if (this->brush) { this->brush->Release(); this->brush = nullptr; }
-	if (this->backBrush) { this->backBrush->Release(); this->backBrush = nullptr; }
-
 	HRESULT compatibleResult = this->target->CreateCompatibleRenderTarget(&this->bitmapTarget);
 	if (!SUCCEEDED(compatibleResult)) {
 		MessageBox(this->hWnd, TEXT("Error while creating compatible render target"), TEXT("Dimension"), MB_ICONERROR | MB_OK);
@@ -137,15 +132,22 @@ void Engine::DrawV2(HDC hdc) {
 	bitmapTarget->SetTransform(D2D1::Matrix3x2F::Translation(static_cast<float>(canvasX), static_cast<float>(canvasY)));
 	bitmapTarget->Clear(this->isDarkTheme ? D2D1::ColorF(43.0f / 255.0f, 43.0f / 255.0f, 43.0f / 255.0f) : D2D1::ColorF::WhiteSmoke);
 
+	// Without an initialized project there is no canvas: only the background is shown
+	const bool hasProject = this->project.IsInitialized();
+
 	// Draw the scene
-	ID2D1SolidColorBrush* sceneBrush = nullptr;
-	bitmapTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::White), &sceneBrush);
-	bitmapTarget->FillRectangle(&sceneRRect, sceneBrush);
-	sceneBrush->Release();
+	if (hasProject) {
+		ID2D1SolidColorBrush* sceneBrush = nullptr;
+		bitmapTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::White), &sceneBrush);
+		if (sceneBrush) {
+			bitmapTarget->FillRectangle(&sceneRRect, sceneBrush);
+			sceneBrush->Release();
+		}
+	}
 
 	// And then the objects
-	if (this->frames.size() > 0 && this->currentFrame < this->frames.size()) {
-		Frame& frame = this->frames[this->currentFrame];
+	if (hasProject && this->project.frames.size() > 0 && this->currentFrame < this->project.frames.size()) {
+		Frame& frame = this->project.frames[this->currentFrame];
 
 		for (int i = 0; i < frame.shapes.size(); i++) {
 			Shape shape = frame.shapes[i];

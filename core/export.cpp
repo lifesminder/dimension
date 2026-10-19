@@ -43,14 +43,14 @@ int GetEncoderCLSID(const WCHAR *format, CLSID *clsid) {
 // To-Do: add more options and codecs if appliable, gradually use open-source encoders
 //		  instead of Windows Media Foundation
 bool Engine::ExportVideo(wstring path) {
-	if (this->frames.empty()) {
+	if (this->project.frames.empty()) {
 		MessageBox(this->hWnd, TEXT("There are no frames to export"), TEXT("DimEngine"), MB_ICONINFORMATION | MB_OK);
 		return false;
 	}
 
 	// H.264 requires even dimensions
 	const UINT width = (UINT)this->GetAs<int>(L"width", 800) & ~1u, height = (UINT)this->GetAs<int>(L"height", 600) & ~1u;
-	UINT fps = this->GetAs<unsigned int>(L"fps", 12);
+	UINT fps = (UINT)max(1, this->GetAs<int>(L"fps", 12));
 	if (fps == 0) fps = 12;
 	const UINT64 frameDuration = 10000000ULL / fps; // 100-ns units
 	const UINT bitrate = 8000000;
@@ -95,7 +95,7 @@ bool Engine::ExportVideo(wstring path) {
 		LONGLONG time = 0;
 		ok = true;
 
-		for (unsigned int i = 0; i < this->frames.size() && ok; i++) {
+		for (unsigned int i = 0; i < this->project.frames.size() && ok; i++) {
 			this->currentFrame = i;
 			this->Draw(bmp);
 

@@ -29,13 +29,28 @@ void New() {
         if (confirm == IDYES) Save(true);
     }
 
-    currentFile = L"";
-    currentCode = L"";
-    engine.Clean();
-    engine.Parse(currentCode.data());
-    loggedActions.clear();
-    currentAction = 0;
-    isSaved = true;
+    if (DialogBox(hInst, MAKEINTRESOURCE(IDD_NEW), hwnd, NewProject) == IDOK) {
+        // The dialog already installed a fresh project with the chosen options
+        currentFile = L"";
+        engine.Stop();
+        engine.Clean();
+        Frame first;
+        first.number = 0;
+        first.length = 1;
+        engine.CreateFrame(first);
+        engine.currentFrame = 0;
+        currentCode = engine.Cast();
+        loggedActions.clear();
+        currentAction = 0;
+        isSaved = true;
+
+        wstring caption = engine.project.name + L" - " + szTitle;
+        SetWindowTextW(hwnd, caption.c_str());
+        UIRefresh(hwnd, 0, 0);
+        UpdateMenu();
+        InvalidateRect(hwnd, NULL, TRUE);
+        UpdateWindow(hwnd);
+    }
 }
 void Open() {
     OPENFILENAMEW ofn;
@@ -66,6 +81,7 @@ void Open() {
             }
         }
         stream.close();
+        UpdateMenu();
     }
 }
 void Save(bool force) {
@@ -193,6 +209,97 @@ INT_PTR CALLBACK Editor(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
     return (INT_PTR)FALSE;
 }
 
+INT_PTR CALLBACK NewProject(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+    UNREFERENCED_PARAMETER(lParam);
+    switch (message) {
+        case WM_CTLCOLORDLG:
+        case WM_CTLCOLORSTATIC:
+        case WM_CTLCOLORBTN:
+        case WM_CTLCOLOREDIT: {
+            if (DimCoreIsDark())
+                return UIRefresh(hDlg, lParam, wParam, message);
+            return 0;
+        }
+        case WM_INITDIALOG: {
+            UIRefresh(hDlg, lParam, wParam);
+
+            // Seed with the current project's real values rather than hardcoded ones
+            SetDlgItemTextW(hDlg, IDC_NEW_NAME, L"Untitled");
+            SetDlgItemInt(hDlg, IDC_NEW_SIZE_W, engine.GetAs<int>(L"width", 800), FALSE);
+            SetDlgItemInt(hDlg, IDC_NEW_SIZE_H, engine.GetAs<int>(L"height", 600), FALSE);
+            SetDlgItemInt(hDlg, IDC_NEW_FPS, engine.GetAs<int>(L"fps", 15), FALSE);
+            SendDlgItemMessageW(hDlg, IDC_NEW_NAME, EM_SETLIMITTEXT, 128, 0);
+            SendDlgItemMessageW(hDlg, IDC_NEW_NAME, EM_SETSEL, 0, -1);
+            SendDlgItemMessageW(hDlg, IDC_NEW_SIZE_W, EM_SETLIMITTEXT, 5, 0);
+            SendDlgItemMessageW(hDlg, IDC_NEW_SIZE_H, EM_SETLIMITTEXT, 5, 0);
+            SendDlgItemMessageW(hDlg, IDC_NEW_FPS, EM_SETLIMITTEXT, 3, 0);
+
+            // Spin control drives the FPS box
+            SendDlgItemMessageW(hDlg, IDC_NEW_FPS_SPIN, UDM_SETBUDDY, (WPARAM)GetDlgItem(hDlg, IDC_NEW_FPS), 0);
+            SendDlgItemMessageW(hDlg, IDC_NEW_FPS_SPIN, UDM_SETRANGE32, 1, 120);
+            SendDlgItemMessageW(hDlg, IDC_NEW_FPS_SPIN, UDM_SETPOS32, 0, engine.GetAs<int>(L"fps", 15));
+            SetFocus(GetDlgItem(hDlg, IDC_NEW_NAME));
+
+            return (INT_PTR)FALSE;
+        }
+        case WM_COMMAND: {
+            switch (LOWORD(wParam)) {
+                case IDOK: {
+                    WCHAR title[129] = L"";
+                    GetDlgItemTextW(hDlg, IDC_NEW_NAME, title, 129);
+                    BOOL okW = FALSE, okH = FALSE, okF = FALSE;
+                    UINT width = GetDlgItemInt(hDlg, IDC_NEW_SIZE_W, &okW, FALSE),
+                         height = GetDlgItemInt(hDlg, IDC_NEW_SIZE_H, &okH, FALSE),
+                         fps = GetDlgItemInt(hDlg, IDC_NEW_FPS, &okF, FALSE);
+
+                    if (!okW || width < 16 || width > 8192) {
+                        MessageBoxW(hDlg, L"Width must be between 16 and 8192.", szTitle, MB_ICONWARNING | MB_OK);
+                        SetFocus(GetDlgItem(hDlg, IDC_NEW_SIZE_W));
+                        return (INT_PTR)TRUE;
+                    }
+                    if (!okH || height < 16 || height > 8192) {
+                        MessageBoxW(hDlg, L"Height must be between 16 and 8192.", szTitle, MB_ICONWARNING | MB_OK);
+                        SetFocus(GetDlgItem(hDlg, IDC_NEW_SIZE_H));
+                        return (INT_PTR)TRUE;
+                    }
+                    if (!okF || fps < 1 || fps > 120) {
+                        MessageBoxW(hDlg, L"FPS must be between 1 and 120.", szTitle, MB_ICONWARNING | MB_OK);
+                        SetFocus(GetDlgItem(hDlg, IDC_NEW_FPS));
+                        return (INT_PTR)TRUE;
+                    }
+
+                    wstring name = title;
+                    size_t first = name.find_first_not_of(L" \t\r\n");
+                    size_t last = name.find_last_not_of(L" \t\r\n");
+                    name = (first == wstring::npos) ? L"" : name.substr(first, last - first + 1);
+                    if (name.empty()) name = L"Untitled";
+
+                    map<wstring, any> projectOptions;
+                    projectOptions[L"width"] = (int)width;
+                    projectOptions[L"height"] = (int)height;
+                    projectOptions[L"fps"] = (int)fps;
+
+                    // Keep program-level settings across projects
+                    for (const wchar_t* key : { L"darkTheme", L"frameLoop" }) {
+                        auto it = engine.project.options.find(key);
+                        if (it != engine.project.options.end()) projectOptions[key] = it->second;
+                    }
+
+                    engine.project = Project(name, projectOptions);
+
+                    EndDialog(hDlg, IDOK);
+                    return (INT_PTR)TRUE;
+                }
+                case IDCANCEL: {
+                    EndDialog(hDlg, LOWORD(wParam));
+                    return (INT_PTR)TRUE;
+                }
+            }
+            break;
+        }
+    } return (INT_PTR)FALSE;
+}
+
 INT_PTR CALLBACK ExportProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
     UNREFERENCED_PARAMETER(lParam);
 
@@ -302,6 +409,15 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
             SetWindowTextA(GetDlgItem(hDlg, IDC_DIM_TITLE), programTitle);
 
             return (INT_PTR)TRUE;
+        }
+        case WM_NOTIFY: {
+            LPNMHDR nm = (LPNMHDR)lParam;
+            if (nm->idFrom == IDC_DIM_COPYRIGHT && (nm->code == NM_CLICK || nm->code == NM_RETURN)) {
+                PNMLINK link = (PNMLINK)lParam;
+                ShellExecuteW(hDlg, L"open", link->item.szUrl, NULL, NULL, SW_SHOWNORMAL);
+                return (INT_PTR)TRUE;
+            }
+            break;
         }
         case WM_COMMAND: {
             if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) {

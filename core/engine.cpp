@@ -67,47 +67,47 @@ Engine::~Engine() {
 
 // Basics
 int Engine::CreateFrame(Frame frame) {
-	this->frames.push_back(frame);
-	return (int)this->frames.size() - 1;
+	this->project.frames.push_back(frame);
+	return (int)this->project.frames.size() - 1;
 }
 int Engine::CreateShape(Shape shape) {
-	if (this->currentFrame < this->frames.size()) {
-		this->frames[this->currentFrame].shapes.push_back(shape);
-		return (int)this->frames[this->currentFrame].shapes.size() - 1;
+	if (this->currentFrame < this->project.frames.size()) {
+		this->project.frames[this->currentFrame].shapes.push_back(shape);
+		return (int)this->project.frames[this->currentFrame].shapes.size() - 1;
 	}
 	return -1;
 }
 int Engine::CreateShape(int frame, Shape shape) {
-	if (frame < (int)this->frames.size()) {
-		this->frames[frame].shapes.push_back(shape);
-		return (int)this->frames[frame].shapes.size() - 1;
+	if (frame < (int)this->project.frames.size()) {
+		this->project.frames[frame].shapes.push_back(shape);
+		return (int)this->project.frames[frame].shapes.size() - 1;
 	}
 	return -1;
 }
 int Engine::EditFrame(int id, Frame frame) {
-	if (id < (int)this->frames.size()) {
-		this->frames[id] = frame;
+	if (id < (int)this->project.frames.size()) {
+		this->project.frames[id] = frame;
 		return id;
 	}
 	return -1;
 }
 int Engine::EditShape(int id, int shapeId, Shape shape) {
-	if (id < (int)this->frames.size() && shapeId < (int)this->frames[id].shapes.size()) {
-		this->frames[id].shapes[shapeId] = shape;
+	if (id < (int)this->project.frames.size() && shapeId < (int)this->project.frames[id].shapes.size()) {
+		this->project.frames[id].shapes[shapeId] = shape;
 		return shapeId;
 	}
 	return -1;
 }
 int Engine::DeleteFrame(int id) {
-	if (id < (int)this->frames.size()) {
-		this->frames.erase(this->frames.begin() + id);
+	if (id < (int)this->project.frames.size()) {
+		this->project.frames.erase(this->project.frames.begin() + id);
 		return id;
 	}
 	return -1;
 }
 int Engine::DeleteShape(int id, int shapeId) {
-	if (id < (int)this->frames.size() && shapeId < (int)this->frames[id].shapes.size()) {
-		this->frames[id].shapes.erase(this->frames[id].shapes.begin() + shapeId);
+	if (id < (int)this->project.frames.size() && shapeId < (int)this->project.frames[id].shapes.size()) {
+		this->project.frames[id].shapes.erase(this->project.frames[id].shapes.begin() + shapeId);
 		return shapeId;
 	}
 	return -1;
@@ -116,15 +116,15 @@ int Engine::DeleteShape(int id, int shapeId) {
 // Options management
 // getter — never stores fallback
 any Engine::Get(wstring option, any fallback) {
-	auto it = this->options.find(option);
-	if (it != this->options.end())
+	auto it = this->project.options.find(option);
+	if (it != this->project.options.end())
 		return it->second;
 	return fallback;
 }
 
 // setter — always overwrites
 void Engine::Set(wstring option, any value) {
-	this->options[option] = value;
+	this->project.options[option] = value;
 }
 
 wstring Engine::Option(Shape shape, wstring name) {
@@ -141,7 +141,8 @@ int Engine::OptionInt(Shape shape, wstring name, int byDefault) {
 
 // Frames
 void Engine::Play() {
-	unsigned int fps = this->GetAs<unsigned int>(L"fps", 12);
+	int fps = this->GetAs<int>(L"fps", 12);
+	if (fps < 1) fps = 12;
 	SetTimer(this->hWnd, 1, 1000 / fps, NULL);
 	this->isPlaying = true;
 }
@@ -157,7 +158,7 @@ void Engine::Stop() {
 }
 
 void Engine::NextFrame() {
-	if (this->currentFrame + 1 < this->frames.size()) {
+	if (this->currentFrame + 1 < this->project.frames.size()) {
 		this->currentFrame++;
 	} else if (this->GetAs<bool>(L"frameLoop", false)) {
 		this->currentFrame = 0;
@@ -172,7 +173,7 @@ void Engine::PreviousFrame() {
 	if (this->currentFrame > 0) {
 		this->currentFrame--;
 	} else if (this->GetAs<bool>(L"frameLoop", false)) {
-		this->currentFrame = (unsigned int)this->frames.size() - 1;
+		this->currentFrame = (unsigned int)this->project.frames.size() - 1;
 	} else {
 		this->Pause();
 	}
@@ -219,8 +220,8 @@ void Engine::Draw(__out_opt Bitmap *target) {
 		graphics->FillRectangle(&sceneBrush, canvasX, canvasY, canvasW, canvasH);
 		graphics->DrawRectangle(&scenePen, canvasX, canvasY, canvasW, canvasH);
 
-		if (this->frames.size() > 0 && this->currentFrame < this->frames.size()) {
-			Frame& frame = this->frames[this->currentFrame];
+		if (this->project.frames.size() > 0 && this->currentFrame < this->project.frames.size()) {
+			Frame& frame = this->project.frames[this->currentFrame];
 
 			for (int i = 0; i < frame.shapes.size(); i++) {
 				Shape shape = frame.shapes[i];
@@ -435,7 +436,7 @@ void Engine::Lex(__in LPWSTR code) {
 			}
 		} else if (token == L"frame") {
 			Frame frame;
-			frame.number = (unsigned int)this->frames.size();
+			frame.number = (unsigned int)this->project.frames.size();
 			wstring block = ReadBlock(stream);
 			wistringstream blockStream(block);
 			wstring blockToken;
@@ -447,7 +448,7 @@ void Engine::Lex(__in LPWSTR code) {
 				sh.id = (int)frame.shapes.size();
 				frame.shapes.push_back(sh);
 			}
-			this->frames.push_back(frame);
+			this->project.frames.push_back(frame);
 
 		} else if (token == L"scene") {
 			wstring block = ReadBlock(stream);
@@ -460,15 +461,15 @@ void Engine::Lex(__in LPWSTR code) {
 				}
 			}
 		} else {
-			if (this->frames.empty()) {
+			if (this->project.frames.empty()) {
 				Frame frame; frame.number = 0;
-				this->frames.push_back(frame);
+				this->project.frames.push_back(frame);
 			}
 			token = AccumulateArgs(stream, token);
 			Shape sh = DimShape(token);
 			if (sh.type == SHAPE_NONE) continue;
-			sh.id = (int)this->frames[0].shapes.size();
-			this->frames[0].shapes.push_back(sh);
+			sh.id = (int)this->project.frames[0].shapes.size();
+			this->project.frames[0].shapes.push_back(sh);
 		}
 	}
 }
@@ -486,28 +487,33 @@ void Engine::Parse(__in LPWSTR code) {
 }
 
 void Engine::Clean() {
-	this->frames.clear();
+	this->project.frames.clear();
 	this->currentFrame = 0;
 }
 
 wstring Engine::Cast() {
 	wostringstream codeStream;
 
+	// Nothing to cast for an empty project; also don't inject defaults into it,
+	// which would silently make it "initialized"
+	if (this->project.options.empty() && this->project.frames.empty())
+		return L"";
+
 	// Scene
-	if (this->options.find(L"width") == this->options.end()) this->options[L"width"] = 800;
-	if (this->options.find(L"height") == this->options.end()) this->options[L"height"] = 600;
-	if (this->options.find(L"fps") == this->options.end()) this->options[L"fps"] = 12;
+	if (this->project.options.find(L"width") == this->project.options.end()) this->project.options[L"width"] = 800;
+	if (this->project.options.find(L"height") == this->project.options.end()) this->project.options[L"height"] = 600;
+	if (this->project.options.find(L"fps") == this->project.options.end()) this->project.options[L"fps"] = 12;
 
 	codeStream << "scene {\r\n";
-	for (auto op = this->options.begin(); op != this->options.end(); ++op) {
+	for (auto op = this->project.options.begin(); op != this->project.options.end(); ++op) {
 		// To-Do: program-specific options should be masked under different way
 		if (op->first == L"darkTheme" || op->first == L"frameLoop") continue;
 
 		auto next_op = next(op);
-		while (next_op != this->options.end() &&
+		while (next_op != this->project.options.end() &&
 			(next_op->first == L"darkTheme" || next_op->first == L"frameLoop"))
 			++next_op;
-		bool last = (next_op == this->options.end());
+		bool last = (next_op == this->project.options.end());
 
 		codeStream << "\t" << op->first << "=";
 		try {
@@ -523,11 +529,11 @@ wstring Engine::Cast() {
 	}
 	codeStream << "}\r\n";
 
-	if (this->frames.size() > 0) {
+	if (this->project.frames.size() > 0) {
 		codeStream << "\r\n";
-		for (int i = 0; i < this->frames.size(); i++) {
+		for (int i = 0; i < this->project.frames.size(); i++) {
 			// Frames
-			Frame frame = this->frames[i];
+			Frame frame = this->project.frames[i];
 			codeStream << "frame {\r\n";
 
 			for (int j = 0; j < frame.shapes.size(); j++) {

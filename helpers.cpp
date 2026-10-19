@@ -125,6 +125,15 @@ int UIRefresh(HWND hWnd, LPARAM lParam, WPARAM wParam, int code) {
                     SetBkMode(hdc, TRANSPARENT);
                     return (INT_PTR)bg;
                 }
+                case WM_CTLCOLOREDIT: {
+                    // Text boxes get a slightly lighter, opaque background than the dialog
+                    static HBRUSH editBg = CreateSolidBrush(RGB(51, 51, 51));
+                    HDC hdc = (HDC)wParam;
+                    SetTextColor(hdc, RGB(240, 240, 240));
+                    SetBkColor(hdc, RGB(51, 51, 51));
+                    SetBkMode(hdc, OPAQUE);
+                    return (INT_PTR)editBg;
+                }
             }
         }
     }
@@ -159,8 +168,8 @@ void UpdateMenu() {
         return;
 
     bool hasShapes = false, hasSelectedShapes = false;
-    if (!engine.frames.empty() && engine.currentFrame >= 0 && engine.currentFrame < (int)engine.frames.size()) {
-        auto& shapes = engine.frames[engine.currentFrame].shapes;
+    if (!engine.project.frames.empty() && engine.currentFrame >= 0 && engine.currentFrame < (int)engine.project.frames.size()) {
+        auto& shapes = engine.project.frames[engine.currentFrame].shapes;
         hasShapes = !shapes.empty();
         for (const auto& shape : shapes) {
             if (shape.selected) {
@@ -168,6 +177,17 @@ void UpdateMenu() {
                 break;
             }
         }
+    }
+
+    // Without an initialized project the whole Edit menu (position 1) is unavailable
+    const bool hasProject = engine.project.IsInitialized();
+    if (HMENU hEdit = GetSubMenu(hMenu, 1)) {
+        for (int i = 0, n = GetMenuItemCount(hEdit); i < n; i++)
+            EnableMenuItem(hEdit, i, MF_BYPOSITION | (hasProject ? MF_ENABLED : MF_GRAYED));
+    }
+    if (!hasProject) {
+        DrawMenuBar(hwnd);
+        return;
     }
 
     EnableMenuItem(hMenu, ID_ACTION_UNDO, MF_BYCOMMAND | (currentAction > 0 ? MF_ENABLED : MF_GRAYED));
@@ -195,18 +215,18 @@ void ActionUpdate(int type, LoggedAction action = {}) {
                 case ID_TIMELINE_NEW:
                 case ID_TIMELINE_DUPLICATE: {
                     if (type == 0) {
-                        engine.DeleteFrame((int)engine.frames.size() - 1);
-                        engine.currentFrame = max(0, (int)engine.frames.size() - 1);
+                        engine.DeleteFrame((int)engine.project.frames.size() - 1);
+                        engine.currentFrame = max(0, (int)engine.project.frames.size() - 1);
                     } else {
                         Frame fr; fr.shapes = a.shapes;
                         engine.CreateFrame(fr);
-                        engine.currentFrame = (int)engine.frames.size() - 1;
+                        engine.currentFrame = (int)engine.project.frames.size() - 1;
                     }
                     break;
                 }
                 case ID_TIMELINE_EXTEND: {
-                    if (a.frame < (unsigned int)engine.frames.size()) {
-                        auto& len = engine.frames[a.frame].length;
+                    if (a.frame < (unsigned int)engine.project.frames.size()) {
+                        auto& len = engine.project.frames[a.frame].length;
                         if (type == 0) {
                             if (len > 1)
                                 len--;
@@ -220,23 +240,23 @@ void ActionUpdate(int type, LoggedAction action = {}) {
                 case ID_TIMELINE_DELETE: {
                     if (type == 0) {
                         Frame fr; fr.shapes = a.shapes;
-                        size_t pos = min((size_t)a.frame, engine.frames.size());
-                        engine.frames.insert(engine.frames.begin() + pos, fr);
+                        size_t pos = min((size_t)a.frame, engine.project.frames.size());
+                        engine.project.frames.insert(engine.project.frames.begin() + pos, fr);
                         engine.currentFrame = (int)pos;
                     } else {
                         engine.DeleteFrame(a.frame);
-                        if (engine.frames.empty()) engine.CreateFrame(Frame());
-                        engine.currentFrame = min((int)a.frame, (int)engine.frames.size() - 1);
+                        if (engine.project.frames.empty()) engine.CreateFrame(Frame());
+                        engine.currentFrame = min((int)a.frame, (int)engine.project.frames.size() - 1);
                     }
                     break;
                 }
                 case ID_SHAPE_DELETE: {
-                    if (a.frame < (unsigned int)engine.frames.size()) {
+                    if (a.frame < (unsigned int)engine.project.frames.size()) {
                         if (type == 0) {
                             for (auto& s : a.shapes)
-                                engine.frames[a.frame].shapes.push_back(s);
+                                engine.project.frames[a.frame].shapes.push_back(s);
                         } else {
-                            auto& shapes = engine.frames[a.frame].shapes;
+                            auto& shapes = engine.project.frames[a.frame].shapes;
                             for (int i = (int)shapes.size() - 1; i >= 0; i--) {
                                 for (auto& s : a.shapes) {
                                     if (shapes[i].id == s.id) {
@@ -250,13 +270,13 @@ void ActionUpdate(int type, LoggedAction action = {}) {
                     break;
                 }
                 case 5000: {
-                    if (a.frame < (unsigned int)engine.frames.size()) {
+                    if (a.frame < (unsigned int)engine.project.frames.size()) {
                         if (type == 0) {
-                            auto& shapes = engine.frames[a.frame].shapes;
+                            auto& shapes = engine.project.frames[a.frame].shapes;
                             if (!shapes.empty()) shapes.pop_back();
                         } else {
                             for (auto& s : a.shapes)
-                                engine.frames[a.frame].shapes.push_back(s);
+                                engine.project.frames[a.frame].shapes.push_back(s);
                         }
                     }
                     break;
@@ -264,8 +284,8 @@ void ActionUpdate(int type, LoggedAction action = {}) {
             }
 
             if (type == 1) currentAction++; // advance after redo
-            if (engine.currentFrame >= (int)engine.frames.size())
-                engine.currentFrame = max(0, (int)engine.frames.size() - 1);
+            if (engine.currentFrame >= (int)engine.project.frames.size())
+                engine.currentFrame = max(0, (int)engine.project.frames.size() - 1);
             currentCode = engine.Cast();
             InvalidateRect(hwnd, NULL, FALSE);
 
