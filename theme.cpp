@@ -34,6 +34,7 @@ typedef struct _DTTOPTS {
 extern "C" HRESULT WINAPI DrawThemeTextEx(HTHEME, HDC, int, int, LPCWSTR, int, DWORD, LPRECT, const DTTOPTS*);
 #endif
 
+static HTHEME g_menuTheme = nullptr;
 static HBRUSH g_brTextColor = CreateSolidBrush(RGB(255, 255, 255));
 static HBRUSH g_brItemBackground = CreateSolidBrush(RGB(43, 43, 43));
 static HBRUSH g_brItemBackgroundHot = CreateSolidBrush(RGB(48, 48, 48));
@@ -99,29 +100,24 @@ bool UAHWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, LRESULT* 
             // get the item state for drawing
             DWORD dwFlags = DT_CENTER | DT_SINGLELINE | DT_VCENTER;
             int iTextStateID = 0;
-            int iBackgroundStateID = 0;
             {
                 if ((pUDMI->dis.itemState & ODS_INACTIVE) | (pUDMI->dis.itemState & ODS_DEFAULT)) {
                     // normal display
                     iTextStateID = MPI_NORMAL;
-                    iBackgroundStateID = MPI_NORMAL;
                 }
                 if (pUDMI->dis.itemState & ODS_HOTLIGHT) {
                     // hot tracking
                     iTextStateID = MPI_HOT;
-                    iBackgroundStateID = MPI_HOT;
                     pbrBackground = &g_brItemBackgroundHot;
                 }
                 if (pUDMI->dis.itemState & ODS_SELECTED) {
                     // clicked -- MENU_POPUPITEM has no state for this, though MENU_BARITEM does
                     iTextStateID = MPI_HOT;
-                    iBackgroundStateID = MPI_HOT;
                     pbrBackground = &g_brItemBackgroundSelected;
                 }
                 if ((pUDMI->dis.itemState & ODS_GRAYED) || (pUDMI->dis.itemState & ODS_DISABLED)) {
                     // disabled / grey text
                     iTextStateID = MPI_DISABLED;
-                    iBackgroundStateID = MPI_DISABLED;
                 }
                 if (pUDMI->dis.itemState & ODS_NOACCEL) {
                     dwFlags |= DT_HIDEPREFIX;
@@ -145,7 +141,6 @@ bool UAHWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, LRESULT* 
             return false;
         }
         case WM_UAHMEASUREMENUITEM: {
-            UAHMEASUREMENUITEM* pMmi = (UAHMEASUREMENUITEM*)lParam;
             *lr = DefWindowProc(hWnd, message, wParam, lParam);
             return true;
         }

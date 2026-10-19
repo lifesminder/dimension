@@ -107,13 +107,12 @@ ifeq ($(TOOLCHAIN),llvm)
 CXX      := $(if $(LLVM),$(LLVM)/)clang++
 TARGET   := --target=$(TRIPLE)
 ifneq ($(MINGW),)
-TARGET   += --sysroot=$(MINGW) --gcc-toolchain=$(MINGW)
+TARGET   += --sysroot=$(MINGW)
 endif
-CXXFLAGS := $(TARGET)
+# With libstdc++ linked statically, clang's inline type_info::operator== collides with
+# the out-of-line one in libstdc++.a (duplicate symbol); use the out-of-line one only
+CXXFLAGS := $(TARGET) -D__GXX_TYPEINFO_EQUALITY_INLINE=0
 LDFLAGS  := $(TARGET) -fuse-ld=lld
-# clang inlines libstdc++'s type_info::operator== which libstdc++.a also defines; the
-# two definitions are identical, so let the linker keep the first one
-LDFLAGS  += -Wl,--allow-multiple-definition
 # lld does not know where MinGW keeps libgcc & co: point it there
 ifneq ($(MINGW),)
 GCC_LIBDIR := $(firstword $(wildcard $(MINGW)/lib/gcc/$(GNU_TRIPLE)/*))

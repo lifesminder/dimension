@@ -181,6 +181,61 @@ void Engine::PreviousFrame() {
 	UpdateWindow(this->hWnd);
 }
 
+// Bounding box of a shape in canvas coordinates (used for the selection rectangle).
+// Rectangles/ellipses use x,y,width,height; lines use both end points; paths use every
+// anchor and control handle; text is estimated from its font size and content.
+bool Engine::ShapeBounds(const Shape& shape, float& left, float& top, float& right, float& bottom) {
+	bool any = false;
+	auto include = [&](float px, float py) {
+		if (!any) { left = right = px; top = bottom = py; any = true; }
+		else { left = min(left, px); right = max(right, px); top = min(top, py); bottom = max(bottom, py); }
+	};
+
+	switch (shape.type) {
+		case SHAPE_RECTANGLE:
+		case SHAPE_ELLIPSE: {
+			float x = (float)this->OptionInt(shape, L"x"), y = (float)this->OptionInt(shape, L"y");
+			include(x, y);
+			include(x + this->OptionInt(shape, L"width"), y + this->OptionInt(shape, L"height"));
+			break;
+		}
+		case SHAPE_LINE: {
+			include((float)this->OptionInt(shape, L"x"), (float)this->OptionInt(shape, L"y"));
+			include((float)this->OptionInt(shape, L"x2"), (float)this->OptionInt(shape, L"y2"));
+			break;
+		}
+		case SHAPE_TEXT: {
+			float x = (float)this->OptionInt(shape, L"x"), y = (float)this->OptionInt(shape, L"y");
+			int size = this->OptionInt(shape, L"fontSize", 16);
+			include(x, y);
+			include(x + this->Option(shape, L"content").size() * size * 0.6f, y + size * 1.3f);
+			break;
+		}
+		case SHAPE_PATH: {
+			for (int j = 1; ; j++) {
+				wstring xi = L"x" + to_wstring(j);
+				if (this->Option(shape, xi) == L"") break;
+				float px = (float)this->OptionInt(shape, xi), py = (float)this->OptionInt(shape, L"y" + to_wstring(j));
+				include(px, py);
+				if (this->Option(shape, L"cx" + to_wstring(j)) != L"") {
+					float hx = (float)this->OptionInt(shape, L"cx" + to_wstring(j)), hy = (float)this->OptionInt(shape, L"cy" + to_wstring(j));
+					include(hx, hy);                          // outgoing handle
+					include(2.0f * px - hx, 2.0f * py - hy);  // reflected incoming handle
+				}
+			}
+			break;
+		}
+		default: break;
+	}
+
+	// account for the stroke width
+	if (any) {
+		float half = max(1, this->OptionInt(shape, L"size", 1)) / 2.0f;
+		left -= half; top -= half; right += half; bottom += half;
+	}
+	return any;
+}
+
 // Drawing
 void Engine::Draw(__out_opt Bitmap *target) {
 	PAINTSTRUCT ps;
@@ -240,7 +295,10 @@ void Engine::Draw(__out_opt Bitmap *target) {
 				Pen selectPen(Color(0, 0, 255), 1.0f);
 
 				if (shape.selected) {
-					graphics->DrawRectangle(&selectPen, x - 5, y - 5, width + 10, height + 10);
+					float l, t, r, b;
+					if (this->ShapeBounds(shape, l, t, r, b)) {
+						graphics->DrawRectangle(&selectPen, l - 5 + canvasX, t - 5 + canvasY, (r - l) + 10, (b - t) + 10);
+					}
 				}
 
 				SolidBrush fillBrush(Color(
@@ -248,6 +306,8 @@ void Engine::Draw(__out_opt Bitmap *target) {
 				bool fill = this->Option(shape, L"fill") == L"1";
 
 				switch (shape.type) {
+					case SHAPE_NONE:
+						continue;
 					case SHAPE_RECTANGLE:
 						if (fill) graphics->FillRectangle(&fillBrush, x, y, width, height);
 						graphics->DrawRectangle(&pen, x, y, width, height);
@@ -333,6 +393,9 @@ bool Engine::HitTest(Shape shape, int px, int py) {
 	};
 
 	switch (shape.type) {
+		case SHAPE_NONE: {
+			break;
+		}
 		case SHAPE_RECTANGLE: {
 			int x = this->OptionInt(shape, L"x"), y = this->OptionInt(shape, L"y");
 			int w = this->OptionInt(shape, L"width"), h = this->OptionInt(shape, L"height");
@@ -361,16 +424,58 @@ bool Engine::HitTest(Shape shape, int px, int py) {
 			return px >= x && px <= x + w && py >= y - h && py <= y;
 		}
 		case SHAPE_PATH: {
-			int j = 1; float prevX = 0, prevY = 0;
-			while (true) {
+			// Flatten the path (straight segments and Beziers, same rules as the renderers)
+			vector<pair<float, float>> pts;
+			float prevX = 0, prevY = 0;
+			for (int j = 1; ; j++) {
 				wstring xi = L"x" + to_wstring(j);
 				if (this->Option(shape, xi) == L"") break;
 				float x2 = (float)this->OptionInt(shape, xi);
 				float y2 = (float)this->OptionInt(shape, L"y" + to_wstring(j));
-				if (j > 1 && distToSeg((float)px, (float)py, prevX, prevY, x2, y2) <= tol)
-					return true;
+				bool hasHandle = this->Option(shape, L"cx" + to_wstring(j)) != L"";
+
+				if (j == 1) {
+					pts.push_back({ x2, y2 });
+				} else if (hasHandle) {
+					bool prevHandle = this->Option(shape, L"cx" + to_wstring(j - 1)) != L"";
+					float c1x = prevHandle ? (float)this->OptionInt(shape, L"cx" + to_wstring(j - 1)) : prevX;
+					float c1y = prevHandle ? (float)this->OptionInt(shape, L"cy" + to_wstring(j - 1)) : prevY;
+					float hx = (float)this->OptionInt(shape, L"cx" + to_wstring(j));
+					float hy = (float)this->OptionInt(shape, L"cy" + to_wstring(j));
+					float c2x = 2 * x2 - hx, c2y = 2 * y2 - hy;
+					const int steps = 24;
+					for (int s = 1; s <= steps; s++) {
+						float t = (float)s / steps, u = 1 - t;
+						pts.push_back({
+							u * u * u * prevX + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * x2,
+							u * u * u * prevY + 3 * u * u * t * c1y + 3 * u * t * t * c2y + t * t * t * y2
+						});
+					}
+				} else {
+					pts.push_back({ x2, y2 });
+				}
 				prevX = x2; prevY = y2;
-				j++;
+			}
+			if (pts.empty()) return false;
+
+			// 1. Clicking the stroke always selects, open or closed
+			if (pts.size() == 1)
+				return hypotf(px - pts[0].first, py - pts[0].second) <= tol;
+			for (size_t i = 1; i < pts.size(); i++) {
+				if (distToSeg((float)px, (float)py, pts[i - 1].first, pts[i - 1].second, pts[i].first, pts[i].second) <= tol)
+					return true;
+			}
+
+			// 2. The inside only counts when the path is filled. An open path is filled as if
+			//    it were closed by a straight line from its last point back to the first.
+			if (this->Option(shape, L"fill") == L"1" && pts.size() >= 3) {
+				bool inside = false;
+				for (size_t i = 0, k = pts.size() - 1; i < pts.size(); k = i++) {
+					float xi = pts[i].first, yi = pts[i].second, xk = pts[k].first, yk = pts[k].second;
+					if (((yi > py) != (yk > py)) && (px < (xk - xi) * (py - yi) / (yk - yi) + xi))
+						inside = !inside;
+				}
+				return inside;
 			}
 			return false;
 		}
@@ -543,6 +648,7 @@ wstring Engine::Cast() {
 					codeStream << L"\t"; // prettify
 
 					switch (shape.type) {
+						case SHAPE_NONE: continue;
 						case SHAPE_RECTANGLE: codeStream << L"rectangle"; break;
 						case SHAPE_ELLIPSE: codeStream << L"ellipse"; break;
 						case SHAPE_LINE: codeStream << L"line"; break;

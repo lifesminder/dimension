@@ -269,6 +269,13 @@ void Engine::DrawV2(HDC hdc) {
 				}
 				default: break;
 			}
+
+			// Selection rectangle: works for every shape type, including lines and paths
+			float l, t, r, b;
+			if (shape.selected && this->ShapeBounds(shape, l, t, r, b)) {
+				this->brush->SetColor(D2D1::ColorF(0.0f, 0.0f, 1.0f, 1.0f));
+				bitmapTarget->DrawRectangle(D2D1::RectF(l - 5, t - 5, r + 5, b + 5), this->brush, 1.0f);
+			}
 		}
 	}
 

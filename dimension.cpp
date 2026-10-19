@@ -401,21 +401,27 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 
             // check for path being
             if (cursor.tool == SHAPE_PATH) {
-                // check being close to first point
+                // clicking close to the first point closes (finishes) the path
+                bool closing = false;
                 if (cursor.pathPoints.size() >= 2) {
                     int dx = (int)LOWORD(lParam) - cursor.pathPoints[0].point.x, dy = (int)HIWORD(lParam) - cursor.pathPoints[0].point.y;
-                    if (dx * dx + dy * dy < 15 * 15) { // ???
-                        FinishPath();
-                        return 0;
-                    }
+                    closing = (dx * dx + dy * dy < 15 * 15);
                 }
 
+                // the clicked point always counts, including the one that ends the path
                 PathPoint p = { .point = cursor.drag, .smooth = cursor.dragging };
                 p.controlPoint = (cursor.dragging) ? POINT{ cursor.now.x, cursor.now.y } : cursor.drag;
                 cursor.pathPoints.push_back(p);
                 cursor.points.push_back(cursor.drag);
-                InvalidateRect(hWnd, NULL, FALSE);
                 cursor.dragging = false;
+
+                if (closing) {
+                    FinishPath();
+                    UpdateMenu();
+                    return 0;
+                }
+                InvalidateRect(hWnd, NULL, FALSE);
+                return 0;
             }
 
             // build shape — subtract canvas offset so coords are canvas-relative

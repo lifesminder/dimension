@@ -64,10 +64,10 @@ typedef struct _Shape {
 	volatile bool selected = false;
 } Shape;
 
-typedef struct {
+typedef struct _Frame {
 	unsigned int number, length;
 	vector<Shape> shapes;
-	ID2D1Bitmap* bitmap = nullptr;
+	ID2D1Bitmap* bitmap = NULL;
 } Frame;
 
 class Project {
@@ -99,6 +99,7 @@ class Engine {
 		void Lex(__in LPWSTR code);
 		wstring Option(Shape shape, wstring name);
 		int OptionInt(Shape shape, wstring name, int byDefault = 0);
+		bool ShapeBounds(const Shape& shape, float& left, float& top, float& right, float& bottom);
 
 	public:
 		Project project;
