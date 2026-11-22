@@ -147,6 +147,7 @@ class Engine {
 		DIM_API wstring Cast();
 		DIM_API void Export(wstring path, int frame = -1);
 		DIM_API bool ExportVideo(wstring path); // H.264 MP4
+		DIM_API bool BoxTest(Shape& shape, int bx1, int by1, int bx2, int by2);
 };
 
 wstring Trim(const wstring& s);

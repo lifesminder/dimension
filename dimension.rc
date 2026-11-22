@@ -104,6 +104,16 @@ BEGIN
     END
 END
 
+IDR_SHAPE_ACTIONS MENU
+BEGIN
+    POPUP "ContextMenu"
+    BEGIN
+        MENUITEM "Select &All\tCtrl+A", ID_SHAPE_SELECT_ALL
+        MENUITEM "Deselect &All\tCtrl+Shift+A", ID_SHAPE_DESELECT_ALL
+        MENUITEM SEPARATOR
+        MENUITEM "&Delete\tDel", ID_SHAPE_DELETE
+    END
+END
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -121,6 +131,7 @@ BEGIN
     "=",            ID_BRUSH_RESET,         ASCII,  NOINVERT
     VK_DELETE,      ID_SHAPE_DELETE,        VIRTKEY, NOINVERT
     "A",            ID_SHAPE_SELECT_ALL,    VIRTKEY, CONTROL, NOINVERT
+    "A",            ID_SHAPE_DESELECT_ALL,  VIRTKEY, SHIFT, CONTROL, NOINVERT
     VK_DELETE,      ID_TIMELINE_DELETE,     VIRTKEY, CONTROL, NOINVERT
     VK_F6,          ID_TIMELINE_DUPLICATE,  VIRTKEY, NOINVERT
     VK_F7,          ID_TIMELINE_NEW,        VIRTKEY, NOINVERT

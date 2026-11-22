@@ -11,6 +11,7 @@
 #define IDI_DIMENSION                   107
 #define IDI_SMALL                       108
 #define IDC_DIMENSION                   109
+#define IDR_SHAPE_ACTIONS				110
 #define IDR_MAINFRAME                   128
 #define IDD_EDITOR                      129
 #define IDD_EXPORTER                    130
@@ -34,6 +35,7 @@
 #define ID_SHAPE_SELECT_ALL             3001
 #define ID_ACTION_UNDO                  3002
 #define ID_ACTION_REDO                  3003
+#define ID_SHAPE_DESELECT_ALL           3004
 #define ID_EDIT_COLORS_CHANGE           4000
 #define ID_EDIT_COLORS_CHANGE_BACK      4001
 #define ID_EDIT_COLOR_ISBACKGROUND      4002
@@ -73,6 +75,6 @@
 #define _APS_NEXT_RESOURCE_VALUE        131
 #define _APS_NEXT_COMMAND_VALUE         32844
 #define _APS_NEXT_CONTROL_VALUE         1005
-#define _APS_NEXT_SYMED_VALUE           110
+#define _APS_NEXT_SYMED_VALUE           115
 #endif
 #endif

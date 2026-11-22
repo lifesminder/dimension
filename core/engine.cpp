@@ -685,3 +685,22 @@ wstring Engine::Cast() {
 
 	return codeStream.str();
 }
+
+bool Engine::BoxTest(Shape& shape, int bx1, int by1, int bx2, int by2) {
+    int x = this->OptionInt(shape, L"x");
+    int y = this->OptionInt(shape, L"y");
+    int w = this->OptionInt(shape, L"width");
+    int h = this->OptionInt(shape, L"height");
+
+    int sx1 = x, sy1 = y, sx2 = x + w, sy2 = y + h;
+
+    if (shape.type == SHAPE_LINE) {
+        sx2 = this->OptionInt(shape, L"x2");
+        sy2 = this->OptionInt(shape, L"y2");
+        if (sx2 < sx1) swap(sx1, sx2);
+        if (sy2 < sy1) swap(sy1, sy2);
+    }
+
+    // simple AABB overlap test
+    return !(sx2 < bx1 || sx1 > bx2 || sy2 < by1 || sy1 > by2);
+}

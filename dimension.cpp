@@ -18,6 +18,7 @@ WCHAR szTitle[MAX_LOADSTRING], szWindowClass[MAX_LOADSTRING];
 // Program-specific variables
 Cursor cursor;
 bool isSaved = false;
+unsigned int selectionStatus = 0; // 0 = nothing, 1 = moving, 2 = rotating, the rest = reserved...
 wstring currentFile = L"", currentCode = L"";
 map<int, wchar_t> flags; map<wstring, any> options;
 vector<LoggedAction> loggedActions; unsigned int currentAction = (loggedActions.size() > 0) ? loggedActions.size() : 0;
@@ -282,9 +283,21 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                                     shapes[i].selected = true;
                                 }
                             }
+                            selectionStatus = 1;
                             InvalidateRect(hWnd, NULL, FALSE);
                             UpdateMenu();
                         }
+                    }
+                    break;
+                }
+                case ID_SHAPE_DESELECT_ALL: {
+                    if (engine.project.frames.size() > 0) {
+                        auto& shapes = engine.project.frames[engine.currentFrame].shapes;
+                        for (auto& s : shapes)
+                            s.selected = false;
+                        selectionStatus = 0;
+                        InvalidateRect(hWnd, NULL, FALSE);
+                        UpdateMenu();
                     }
                     break;
                 }
@@ -299,6 +312,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                                     shapes.erase(shapes.begin() + i);
                                 }
                             }
+                            selectionStatus = 0;
                             InvalidateRect(hWnd, NULL, FALSE);
                             ActionUpdate(2, { .type = ID_SHAPE_DELETE, .frame = (unsigned int)engine.currentFrame, .shape = 0, .shapes = shs });
                             UpdateMenu();
@@ -322,6 +336,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             if (wParam == VK_RETURN) {
                 if (cursor.tool == SHAPE_PATH && cursor.drawing)
                     FinishPath();
+            }
+            if (selectionStatus == 1) {
+                // TODO: handle keyboard input for the current selection here
+                // (e.g. Delete, arrow-key nudge, etc.)
             }
             return 0;
         }
@@ -347,25 +365,58 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             cursor.start.x = cursor.now.x = LOWORD(lParam);
             cursor.start.y = cursor.now.y = HIWORD(lParam);
 
-            if (cursor.tool == SHAPE_NONE) {
-                RECT rc; GetClientRect(hWnd, &rc);
-                int canvasW = engine.GetAs<int>(L"width", 800), canvasH = engine.GetAs<int>(L"height", 600);
-                int cx = (rc.right - canvasW) / 2, cy = (rc.bottom - canvasH) / 2;
-                int px = cursor.start.x - cx, py = cursor.start.y - cy;
+            // leaving the Cursor tool to draw something else must not leave
+            // a stale selection highlighted behind it
+            if (cursor.tool != SHAPE_NONE && !engine.project.frames.empty()) {
+                for (auto& s : engine.project.frames[engine.currentFrame].shapes)
+                    s.selected = false;
+                selectionStatus = 0;
+            }
 
+            if (cursor.tool == SHAPE_NONE) {
+                if (!engine.project.IsInitialized()) {
+                    // no document open — the Cursor tool does nothing
+                    cursor.drawing = false;
+                    InvalidateRect(hWnd, NULL, FALSE);
+                    UpdateMenu();
+                    return 0;
+                }
+
+                // clicking directly on a shape always wins over starting a marquee drag
+                bool hitShape = false;
                 if (!engine.project.frames.empty()) {
+                    RECT rc; GetClientRect(hWnd, &rc);
+                    int canvasW = engine.GetAs<int>(L"width", 800), canvasH = engine.GetAs<int>(L"height", 600);
+                    int hcx = (rc.right - canvasW) / 2, hcy = (rc.bottom - canvasH) / 2;
+                    int px = cursor.start.x - hcx, py = cursor.start.y - hcy;
+
                     auto& shapes = engine.project.frames[engine.currentFrame].shapes;
-                    // single-select: clear first
-                    for (auto& s : shapes)
-                        s.selected = false;
                     for (int i = (int)shapes.size() - 1; i >= 0; i--) {
-                        // topmost first
                         if (engine.HitTest(shapes[i], px, py)) {
-                            shapes[i].selected = true;
+                            hitShape = true;
+                            if (!shapes[i].selected) {
+                                // clicked shape wasn't part of the current selection — replace it
+                                for (auto& s : shapes) s.selected = false;
+                                shapes[i].selected = true;
+                            }
+                            // else: already part of a multi-selection — keep the whole group
+                            // selected so the drag moves all of them together
                             break;
                         }
                     }
                 }
+
+                if (hitShape) {
+                    selectionStatus = 1; // WM_MOUSEMOVE will move the selection, never marquee
+                } else {
+                    if (!engine.project.frames.empty()) {
+                        for (auto& s : engine.project.frames[engine.currentFrame].shapes)
+                            s.selected = false;
+                    }
+                    selectionStatus = 0; // empty space — a marquee drag is still allowed
+                }
+
+                cursor.drawing = false;
             } else if (cursor.tool == SHAPE_PATH) {
                 cursor.drawing = true;
                 cursor.drag = { LOWORD(lParam), HIWORD(lParam) };
@@ -379,18 +430,56 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         case WM_MOUSEMOVE: {
             cursor.now.x = LOWORD(lParam);
             cursor.now.y = HIWORD(lParam);
+
+            // Cursor tool
+            if ((wParam & MK_LBUTTON) && cursor.tool == SHAPE_NONE && !cursor.drawing && engine.project.IsInitialized()) {
+                if (selectionStatus == 1) {
+                    // a shape is selected — drag moves it with the cursor instead of a marquee
+                    int dx = cursor.now.x - cursor.start.x, dy = cursor.now.y - cursor.start.y;
+                    if (dx != 0 || dy != 0) {
+                        if (!engine.project.frames.empty()) {
+                            auto& shapes = engine.project.frames[engine.currentFrame].shapes;
+                            for (auto& s : shapes) {
+                                if (!s.selected) continue;
+                                for (auto& kv : s.options) {
+                                    const wstring& key = kv.first;
+                                    bool isX = (!key.empty() && (key[0] == L'x' || (key.size() > 1 && key[0] == L'c' && key[1] == L'x')));
+                                    bool isY = (!key.empty() && (key[0] == L'y' || (key.size() > 1 && key[0] == L'c' && key[1] == L'y')));
+                                    if (!isX && !isY) continue;
+                                    try {
+                                        int v = stoi(any_cast<wstring>(kv.second));
+                                        v += isX ? dx : dy;
+                                        kv.second = to_wstring(v);
+                                    } catch (...) {}
+                                }
+                            }
+                        }
+                        cursor.start = cursor.now;
+                        cursor.dragging = true;
+                        InvalidateRect(hWnd, NULL, FALSE);
+                    }
+                } else {
+                    int dx = cursor.now.x - cursor.start.x, dy = cursor.now.y - cursor.start.y;
+                    if (dx * dx + dy * dy > 16) { // ~4px drag threshold
+                        cursor.drawing = true;
+                    }
+                }
+            }
+
             if (cursor.drawing) {
                 if (cursor.tool == SHAPE_PATH && (wParam & MK_LBUTTON)) {
                     cursor.dragging = true;
                 }
+                // menu state (selection/undo/redo enablement) doesn't change
+                // mid-drag — only the canvas needs to repaint here
                 InvalidateRect(hWnd, NULL, FALSE);
-                UpdateMenu();
             }
             return 0;
         }
         case WM_LBUTTONUP: {
-            if (!cursor.drawing) return 0;
-            if (cursor.tool != SHAPE_PATH) cursor.drawing = false;
+            // the Cursor tool decides click vs. drag itself further down,
+            // so it must not be short-circuited here like the other tools
+            if (!cursor.drawing && cursor.tool != SHAPE_NONE) return 0;
 
             // get canvas offset from engine
             RECT clientRect;
@@ -398,6 +487,64 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             int clientWidth = clientRect.right, clientHeight = clientRect.bottom;
             int canvasW = engine.GetAs<int>(L"width", 800), canvasH = engine.GetAs<int>(L"height", 600);
             int cx = (clientWidth - canvasW) / 2, cy = (clientHeight - canvasH) / 2;
+
+            // Cursor tool
+            if (cursor.tool == SHAPE_NONE) {
+                if (!engine.project.IsInitialized()) {
+                    cursor.drawing = false;
+                    return 0;
+                }
+
+                if (selectionStatus == 1 && cursor.dragging) {
+                    // the selection was actually dragged this mouse-down — commit the move
+                    currentCode = engine.Cast();
+                    isSaved = false;
+                    cursor.dragging = false;
+                    cursor.drawing = false;
+                    InvalidateRect(hWnd, NULL, FALSE);
+                    UpdateMenu();
+                    return 0;
+                }
+
+                int px = cursor.start.x - cx, py = cursor.start.y - cy;
+
+                if (cursor.drawing) {
+                    // mouse moved while held — box-select
+                    int x1 = min(cursor.start.x, cursor.now.x) - cx, y1 = min(cursor.start.y, cursor.now.y) - cy;
+                    int x2 = max(cursor.start.x, cursor.now.x) - cx, y2 = max(cursor.start.y, cursor.now.y) - cy;
+
+                    if (!engine.project.frames.empty()) {
+                        auto& shapes = engine.project.frames[engine.currentFrame].shapes;
+                        for (auto& s : shapes)
+                            s.selected = engine.BoxTest(s, x1, y1, x2, y2);
+                    }
+                } else {
+                    // no movement — default single-select / deselect
+                    if (!engine.project.frames.empty()) {
+                        auto& shapes = engine.project.frames[engine.currentFrame].shapes;
+                        for (auto& s : shapes)
+                            s.selected = false;
+                        for (int i = (int)shapes.size() - 1; i >= 0; i--) {
+                            if (engine.HitTest(shapes[i], px, py)) {
+                                shapes[i].selected = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                selectionStatus = 0;
+                if (!engine.project.frames.empty()) {
+                    for (auto& s : engine.project.frames[engine.currentFrame].shapes) {
+                        if (s.selected) { selectionStatus = 1; break; }
+                    }
+                }
+
+                cursor.drawing = false;
+                InvalidateRect(hWnd, NULL, FALSE);
+                UpdateMenu();
+                return 0;
+            }
 
             // check for path being
             if (cursor.tool == SHAPE_PATH) {
@@ -463,6 +610,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             engine.CreateShape(sh);
             currentCode = engine.Cast();
             isSaved = false;
+            cursor.drawing = false; // shape is committed — drop the rubber-band overlay
             InvalidateRect(hWnd, NULL, FALSE);
 
             vector<Shape> shs;
@@ -478,6 +626,21 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             UpdateMenu();
             return 0;
         }
+        case WM_RBUTTONDOWN: {
+            if (cursor.tool == SHAPE_NONE && selectionStatus == 1 && engine.project.IsInitialized()) {
+                POINT pt = { LOWORD(lParam), HIWORD(lParam) };
+                ClientToScreen(hWnd, &pt);
+
+                HMENU ctxMenuRoot = LoadMenu(hInst, MAKEINTRESOURCE(IDR_SHAPE_ACTIONS));
+                if (ctxMenuRoot) {
+                    HMENU ctxMenu = GetSubMenu(ctxMenuRoot, 0);
+                    SetForegroundWindow(hWnd);
+                    TrackPopupMenu(ctxMenu, TPM_RIGHTBUTTON, pt.x, pt.y, 0, hWnd, NULL);
+                    DestroyMenu(ctxMenuRoot);
+                }
+            }
+            return 0;
+        }
         case WM_PAINT: {
             if (engine.isV2) {
                 PAINTSTRUCT ps;
@@ -489,7 +652,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             }
 
             // rubber band overlay
-            if (cursor.drawing && cursor.tool != SHAPE_NONE) {
+            if (cursor.drawing && !(cursor.tool == SHAPE_NONE && selectionStatus == 1)) {
                 RECT cr;
                 GetClientRect(hWnd, &cr);
 
