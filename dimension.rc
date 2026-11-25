@@ -2,6 +2,7 @@
 //
 #pragma code_page(65001)
 #include "Resource.h"
+#include "version.h"
 
 #define APSTUDIO_READONLY_SYMBOLS
 /////////////////////////////////////////////////////////////////////////////
